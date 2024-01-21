@@ -7,13 +7,18 @@ import os
 
 print(tensorflow.test.gpu_device_name())
 
+hop_length = 1024 * 2
+
+# データセットはmusicディレクトリに入れる
 dataset_path = "music/"
+
 max_length = 0
 librosa_loads = []
 
 Xdata = []
 
 for path in os.listdir(dataset_path):
+    # wavファイルをロードして配列に代入
     y, sr = librosa.load(dataset_path + path)
     librosa_loads.append([y, sr])
     # 一番でかい数値を代入
@@ -23,17 +28,21 @@ for path in os.listdir(dataset_path):
 for i in librosa_loads:
     y, sr = i
 
+    # さっき保存した一番長いファイルの数値から今のファイルの再生時間を引いて、足りない分を0で埋める
     shape_length = len(y)
     zero_array = np.zeros(max_length - shape_length)
     y = np.concatenate((y, zero_array))
 
-    x = librosa.feature.melspectrogram(y=y, sr=sr, hop_length=1024 * 2, win_length=1024 * 2)
-    Xdata.append(x / 32768)
+    # メルスペクトログラムに変換
+    x = librosa.feature.melspectrogram(y=y, sr=sr, hop_length=hop_length, win_length=1024 * 2)
+    Xdata.append(x / 32768)  # データを-1.0から-0.999...の間にする
 
+# メルスペクトログラムをnumpy配列にぶちこむ
 x = np.array(Xdata)
+print(x.shape)
 Xdata = x.reshape((len(x), np.prod(x.shape[1:])))
 
-# 学習とテストデータに分類
+# 学習とテストデータに分類（めんどいからランダムなし
 Xtrain = Xdata[0:7]
 Xtest = Xdata[8:]
 
@@ -45,6 +54,7 @@ print("Num GPUs Available: ", len(tensorflow.config.list_physical_devices('GPU')
 # モデルの構築
 model = models.Sequential()
 
+print(Xdata.shape)
 # エンコーダー部分
 model.add(layers.InputLayer(input_shape=Xdata.shape[1]))
 model.add(layers.Dense(128, activation="relu"))
@@ -75,22 +85,5 @@ plt.grid()
 plt.legend(['Train', 'Validation'], loc='upper left')
 plt.savefig("plot.png", format="png")
 
-y, sr = librosa.load("【初音ミク】 ウミユリ海底譚 【オリジナル曲】.wav")
-shape_length = len(y)
-zero_array = np.zeros(max_length - shape_length)
-y = np.concatenate((y, zero_array))
-
-Xdata = []
-x = librosa.feature.melspectrogram(y=y, sr=sr, hop_length=1024 * 2, win_length=1024 * 2)
-Xdata.append(x / 32768)
-
-x = np.array(Xdata)
-print(x.shape)
-Xdata = x.reshape((len(x), np.prod(x.shape[1:])))
-print(Xdata.shape)
-encode = model.predict(Xdata)
-Ydata = model.predict(encode) * 32768
-Ydata = Ydata.reshape((1, 128, -1))
-Ydata = Ydata[0]
-y_reconstructed = librosa.feature.inverse.mel_to_audio(Ydata, sr=sr, hop_length=1024 * 2, win_length=1024 * 2)
-soundfile.write("test.wav", y_reconstructed, samplerate=sr)
+model.save("waveEncoder.h5")
+print("max_length is", max_length)
