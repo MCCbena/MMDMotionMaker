@@ -1,16 +1,26 @@
 import librosa
 import numpy as np
-import soundfile
-import tensorflow
+import tensorflow as tf
 from tensorflow.keras import models, layers
 import os
 
-print(tensorflow.test.gpu_device_name())
 
 hop_length = 1024 * 2
 
 # データセットはmusicディレクトリに入れる
 dataset_path = "music/"
+
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Currently, memory growth needs to be the same across GPUs
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        logical_gpus = tf.config.list_logical_devices('GPU')
+        print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+    except RuntimeError as e:
+        # Memory growth must be set before GPUs have been initialized
+        print(e)
 
 max_length = 0
 librosa_loads = []
@@ -34,7 +44,8 @@ for i in librosa_loads:
     y = np.concatenate((y, zero_array))
 
     # メルスペクトログラムに変換
-    x = librosa.feature.melspectrogram(y=y, sr=sr, hop_length=hop_length, win_length=1024 * 2)
+    x = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+    print(x.shape)
     Xdata.append(x / 32768)  # データを-1.0から-0.999...の間にする
 
 # メルスペクトログラムをnumpy配列にぶちこむ
@@ -48,8 +59,6 @@ Xtest = Xdata[8:]
 
 print(Xtrain.shape)
 print(Xtest.shape)
-
-print("Num GPUs Available: ", len(tensorflow.config.list_physical_devices('GPU')))
 
 # モデルの構築
 model = models.Sequential()
