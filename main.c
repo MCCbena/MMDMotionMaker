@@ -1,6 +1,13 @@
-#include <bits/types/FILE.h>
 #include <stdio.h>
+#include <locale.h>
+#include <stdlib.h>
+#include <wchar.h>
+#include <iconv.h>
+#include <string.h>
 
+#define MAX_BUF 1024
+
+#pragma pack(push, 1) // 構造体をきつくパッキングし、1バイトのアライメント
 // ヘッダ
 struct Header
 {
@@ -8,13 +15,14 @@ struct Header
 // (MMDver2以前のvmdは"Vocaloid Motion Data file\0")
     char modelName[20]; // モデル名 20byte(MMDver2以前のvmdは10byte)
 // 内容がカメラ,照明,セルフ影の場合は"カメラ・照明\0on Data"となる
+    unsigned int frame;
 };
 
 //ボーンキーフレーム要素データ(111Bytes/要素)
 struct BoneFrame
 {
     char name[15]; // "センター\0"などのボーン名の文字列 15byte
-    unsigned long frame; // フレーム番号
+    unsigned int frame; // フレーム番号
     float x; // ボーンのX軸位置,位置データがない場合は0
     float y; // ボーンのY軸位置,位置データがない場合は0
     float z; // ボーンのZ軸位置,位置データがない場合は0
@@ -107,6 +115,24 @@ struct SelfShadowFrame
     float distance ; // シャドウ距離(MMD入力値Lを(10000-L)/100000とした値)
 };
 
+
+char* decode(char* string, int length){
+    char inbuf[MAX_BUF + 1] = {0};
+    char outbuf[MAX_BUF + 1] = {0};
+    char *in = inbuf;
+    char *out = outbuf;
+    size_t in_size = (size_t) MAX_BUF;
+    size_t out_size = (size_t) MAX_BUF;
+
+    iconv_t cd = iconv_open("UTF-8", "SHIFT-JIS");
+
+    memcpy(in, string, length);
+    iconv(cd, &in, &in_size, &out, &out_size);
+    iconv_close(cd);
+
+    return strdup(outbuf);
+}
+
 int main(){
     struct Header header;
     struct BoneFrame boneFrame;
@@ -114,19 +140,20 @@ int main(){
     FILE *fpw = fopen("/home/shuta/ダウンロード/人マニア（モーション配布）/人マニア.vmd", "rb");
     fread(&header, sizeof(header), 1, fpw);
 
-    fseek(fpw, 54, SEEK_SET);
+    for(int i = 0; i < 150; i++) {
+        fseek(fpw, 54 + (111*i), SEEK_SET);
 
-    fread(&boneFrame, sizeof(boneFrame), 1, fpw);
-    printf("name: %s（", boneFrame.name);
-    for(int i = 0; boneFrame.name[i] != '\0'; i++){
-        printf("%d, ", boneFrame.name[i]);
+        fread(&boneFrame, sizeof(boneFrame), 1, fpw);
+
+
+        printf("--------------------------\n");
+        printf("%s\n", decode(boneFrame.name, 15));
+
+        printf("フレーム: %d\n", boneFrame.frame);
+        printf("ボーン位置：(%f, %f, %f), (%f, %f, %f)\n", boneFrame.x, boneFrame.y, boneFrame.z,
+               boneFrame.qx,boneFrame.qy, boneFrame.qz);
+        printf("--------------------------\n");
     }
-    printf("）\n");
 
-    printf("フレーム: %lu\n", boneFrame.frame);
-    printf("ボーン位置：(%f, %f, %f), (%f, %f, %f)\n", boneFrame.x, boneFrame.y, boneFrame.z, boneFrame.qx, boneFrame.qy, boneFrame.qz);
-
-    for(int i = 0; boneFrame.name[i] != '\0'; i++){
-        printf("0x%02X ", boneFrame.name[i] & 0x000000FF);
-    }
+    printf("%s", decode(header.modelName, 20));
 }
