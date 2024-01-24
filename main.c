@@ -1,9 +1,7 @@
 #include <stdio.h>
-#include <locale.h>
-#include <stdlib.h>
-#include <wchar.h>
 #include <iconv.h>
 #include <string.h>
+#include <json-c/json.h>
 
 #define MAX_BUF 1024
 
@@ -136,15 +134,26 @@ char* decode(char* string, int length){
 int main(){
     struct Header header;
     struct BoneFrame boneFrame;
+    struct json_object* jsonMainObject = json_object_new_array();
 
     FILE *fpw = fopen("/home/shuta/ダウンロード/人マニア（モーション配布）/人マニア.vmd", "rb");
     fread(&header, sizeof(header), 1, fpw);
 
-    for(int i = 0; i < 150; i++) {
-        fseek(fpw, 54 + (111*i), SEEK_SET);
+    int last_frame = 0;
 
+    int i = 0;
+    while (1) {
+        struct json_object* jsonBoneObject = json_object_new_object();
+
+        fseek(fpw, 54 + (111*i), SEEK_SET);
         fread(&boneFrame, sizeof(boneFrame), 1, fpw);
 
+        if((int) boneFrame.frame - last_frame < 0){
+            printf("完了\n");
+            break;
+        }
+
+        last_frame = (int) boneFrame.frame;
 
         printf("--------------------------\n");
         printf("%s\n", decode(boneFrame.name, 15));
@@ -153,7 +162,27 @@ int main(){
         printf("ボーン位置：(%f, %f, %f), (%f, %f, %f)\n", boneFrame.x, boneFrame.y, boneFrame.z,
                boneFrame.qx,boneFrame.qy, boneFrame.qz);
         printf("--------------------------\n");
+
+        i++;
+        //jsonの作成
+        json_object_object_add(jsonBoneObject, "boneName", json_object_new_string(decode(boneFrame.name, 15)));
+        json_object_object_add(jsonBoneObject, "frame", json_object_new_int((int) boneFrame.frame));
+        //座標用の配列を作成
+        struct json_object* locations = json_object_new_array();
+        json_object_array_add(locations, json_object_new_double(boneFrame.x));
+        json_object_array_add(locations, json_object_new_double(boneFrame.y));
+        json_object_array_add(locations, json_object_new_double(boneFrame.z));
+        json_object_object_add(jsonBoneObject, "locations", locations);
+        //クォータニオン
+        struct json_object* quaternion = json_object_new_array();
+        json_object_array_add(quaternion, json_object_new_double(boneFrame.qx));
+        json_object_array_add(quaternion, json_object_new_double(boneFrame.qy));
+        json_object_array_add(quaternion, json_object_new_double(boneFrame.qz));
+        json_object_array_add(quaternion, json_object_new_double(boneFrame.qw));
+        json_object_object_add(jsonBoneObject, "quaternions", quaternion);
+
+        json_object_array_add(jsonMainObject, jsonBoneObject);
     }
 
-    printf("%s", decode(header.modelName, 20));
+    printf("%s", json_object_get_string(jsonMainObject));
 }
