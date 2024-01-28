@@ -1,37 +1,36 @@
 #include <Python.h>
 
-extern void getMotion(const char*);
+extern char* getMotion(const char*);
 
 //definition of out method
-static PyObject* getMotion_wrapper(PyObject* self, PyObject* args, PyObject* kw)
+static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
 {
     const char* path = NULL;
-    static char* argnames[] = {"path"};
 
-    if (!PyArg_ParseTupleAndKeywords(args, kw, "|s",
-                                     argnames, &path))
+    static char* argnames[] = {"path", NULL};
+
+    if (! PyArg_ParseTuple(args, "|s", &path)){
         return NULL;
-    getMotion(path);
-    return Py_BuildValue("");
+    }
+
+    char* motion_json = getMotion(path);
+    return Py_BuildValue("s", motion_json);
 }
 
-//definition of all methods of my module
-static PyMethodDef vdmLoader_methods[] = {
-        {"out", METH_VARARGS | METH_KEYWORDS},
-        {NULL},
+// メソッドを登録
+static PyMethodDef vmd_methods[] = {
+        { "getMotion", getMotion_wrapper, METH_VARARGS, "getMotion to JSON" },
+        { NULL }
 };
 
-// hello module definition struct
-static struct PyModuleDef hello = {
+static struct PyModuleDef modules ={
         PyModuleDef_HEAD_INIT,
-        "hello",
-        "Python3 C API Module(Sample 1)",
-        -1,
-        vdmLoader_methods
+        "VMDConverter",
+        PyDoc_STR("convert vmd,pmx to JSON"),
+        0,
+        vmd_methods,
 };
 
-//module creator
-PyMODINIT_FUNC PyInit_hello(void)
-{
-    return PyModule_Create(&hello);
+PyMODINIT_FUNC PyInit_VMDConverter(){
+    return PyModule_Create(&modules);
 }

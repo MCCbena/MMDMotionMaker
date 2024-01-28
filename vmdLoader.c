@@ -31,7 +31,7 @@ struct BoneFrame
 };
 
 
-char* decode(char* string, int length){
+char* decode(char* string, int length){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
     char inbuf[MAX_BUF + 1] = {0};
     char outbuf[MAX_BUF + 1] = {0};
     char *in = inbuf;
@@ -49,6 +49,7 @@ char* decode(char* string, int length){
 }
 
 const char *getMotion(const char* path){
+    //構造体を宣言
     struct Header header;
     struct BoneFrame boneFrame;
     struct json_object* jsonMainObject = json_object_new_object();
@@ -56,6 +57,7 @@ const char *getMotion(const char* path){
     FILE *fpw = fopen(path, "rb");
     fread(&header, sizeof(header), 1, fpw);
 
+    //構造体ファイルの読み過ぎに対応させるために必要（人マニアのモーションを参照
     int last_frame = 0;
 
     int i = 0;
@@ -64,9 +66,11 @@ const char *getMotion(const char* path){
     while (1) {
         struct json_object* jsonBoneObject = json_object_new_object();
 
+        //最初の54バイトはヘッダーが書かれてる。111バイトはボーンフレームの中身
         fseek(fpw, 54 + (111*i), SEEK_SET);
         fread(&boneFrame, sizeof(boneFrame), 1, fpw);
 
+        //ボーンフレームがさっきのループで取得したフレームを下回った場合
         if((int) boneFrame.frame - last_frame < 0){
             break;
         }
@@ -107,5 +111,3 @@ const char *getMotion(const char* path){
 
     return json_object_get_string(jsonMainObject);
 }
-
-int main(){}
