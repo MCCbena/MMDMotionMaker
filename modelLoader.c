@@ -90,17 +90,18 @@ struct TopData{
 };
 void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
     float test;
+
     fread(&test, 8, 1, fpw);
 
     //位置を設定
     fread(&topData->location, sizeof(float) * 3, 1, fpw);
     //法線を設定
-    printf("カレント:%lx\n", ftell(fpw));
 
     fread(&topData->normal, sizeof(float) * 3, 1, fpw);
     //UVを設定
     fread(&topData->uv, sizeof(float) * 2, 1, fpw);
     //追加UVを設定
+
     int n = header.additional_UV_size[0];
     for (int i = 0; i<n;i++) {
         float additional_uv[4];
@@ -113,13 +114,12 @@ void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
     switch (topData->deformation_method[0]) {
         case 0:
             fread(&topData->bdef1.bone1, sizeof(char)*2, 1, fpw);
-            fseek(fpw, 4, SEEK_CUR);
             break;
         case 1:
             fread(&topData->bdef2.bone1, sizeof(char)*2, 1, fpw);
             fread(&topData->bdef2.bone2, sizeof(char)*2, 1, fpw);
+            fread(&topData->bdef2.weight1, sizeof(float), 1, fpw);
 
-            fread(&topData->bdef2.weight1, sizeof(float)*2, 1, fpw);
             break;
         case 2:
             fread(&topData->bdef4.bone1, sizeof(char)*2, 1, fpw);
@@ -135,7 +135,7 @@ void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
         case 3:
             fread(&topData->sdef.bone1, sizeof(char)*2, 1, fpw);
             fread(&topData->sdef.bone2, sizeof(char)*2, 1, fpw);
-            fread(&topData->sdef.weight1, sizeof(char)*2, 1, fpw);
+            fread(&topData->sdef.weight1, sizeof(float), 1, fpw);
             fread(&topData->sdef.SDEF_C, sizeof(float)*3, 1, fpw);
             fread(&topData->sdef.SDEF_R0, sizeof(float)*3, 1, fpw);
             fread(&topData->sdef.SDEF_R1, sizeof(float)*3, 1, fpw);
@@ -143,7 +143,12 @@ void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
 
     }
     fread(&topData->edge_magnification, sizeof(float), 1, fpw);
+    fseek(fpw, 4, SEEK_CUR);
 }
+
+struct surface{
+    char face_vert_index[2][3];
+};
 
 
 
@@ -179,18 +184,11 @@ int main(){
 
     //頂点データの宣言
     struct TopData topData[45104];
-    for(int i = 0; i < 45103;i++) {
+    for(int i = 0; i < 45104;i++) {
         getTopData(fpw, &topData[i], header);
         fseek(fpw, -12, SEEK_CUR);
-
-
-        printf("変形方式:%d", topData[i].deformation_method[0]);
-        printf("番号:%d", i);
-        printf("座標（%f,%f,%f）", topData[i].location[0], topData[i].location[1], topData[i].location[2]);
-        if(topData[i].deformation_method[0] == 2){
-        }
+        printf("%d\n", i);
     }
 
-    printf("%d\n", topData[6239].deformation_method[0]);
     printf("カレント:%lx\n", ftell(fpw));
 }
