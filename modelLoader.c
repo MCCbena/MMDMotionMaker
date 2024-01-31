@@ -185,7 +185,7 @@ struct Material{
 
     char share_toon_flag; //共有Toonフラグ 0:継続値は個別Toon 1:継続値は共有Toon
 
-    char toon[1024]; //Toonのデータ
+    char toon[1]; //Toonのデータ
 
     TextBuf memo; //メモ : 自由欄／スクリプト記述／エフェクトへのパラメータ配置など
 
@@ -205,15 +205,13 @@ void getMaterialData(struct Header header, struct Material *material, FILE *fpw)
     fread(&material->drawing_flag, sizeof(char), 1, fpw);
     //エッジ系
     fread(&material->edge_color, sizeof(float)*4, 1, fpw);
-    fread(&material->edge_size, sizeof(float)*4, 1, fpw);
+    fread(&material->edge_size, sizeof(float), 1, fpw);
     //通常テクスチャ
     fread(&material->normal_texture_index, header.texture_index_size[0], 1, fpw);
     //スフィアテクスチャ
     fread(&material->sphere_texture_index, header.texture_index_size[0], 1, fpw);
     //スフィアモード
     fread(&material->sphere_mode, sizeof(char),1 , fpw);
-    printf("カレント:%lx\n", ftell(fpw));
-
     //共有Toonフラグ
     fread(&material->share_toon_flag, sizeof(char), 1, fpw);
     switch (material->share_toon_flag) {
@@ -225,8 +223,8 @@ void getMaterialData(struct Header header, struct Material *material, FILE *fpw)
             break;
     }
     //メモ
-    fseek(fpw, 4, SEEK_CUR);
     fread(&material->memo.byte_size, sizeof(int), 1, fpw);
+    printf("カレント:%lx\n", ftell(fpw));
     fread(&material->memo.byte, material->memo.byte_size, 1, fpw);
     //材質に対応する面(頂点)数 (必ず3の倍数になる)
     fread(&material->vertex_size, sizeof(int), 1, fpw);
@@ -301,7 +299,7 @@ int main(){
     fread(&material_size, sizeof(int), 1, fpw);
     struct Material material[material_size];
     for(int i = 0; i < material_size; i++){
-        getMaterialData(header, &material[0], fpw);
+        getMaterialData(header, &material[i], fpw);
 
     }
     printf("サイズ:%d\n", material_size);
