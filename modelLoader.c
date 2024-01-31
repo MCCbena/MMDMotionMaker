@@ -4,14 +4,13 @@
 #include <json-c/json.h>
 
 #define MAX_BUF 1024
-#pragma pack(push, 1) // 構造体をきつくパッキングし、1バイトのアライメント
+#pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
 
 typedef struct {
     int byte_size; //バイト数
     char byte[1024]; //文字列（1024は仮）
 } TextBuf;
 
-int byte_size = 0;
 struct Header {
     //マジックナンバー
     char header[4]; //"PMX "
@@ -89,9 +88,7 @@ struct TopData{
 
 };
 void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
-    float test;
-
-    fread(&test, 8, 1, fpw);
+    fseek(fpw, 8, SEEK_CUR);
 
     //位置を設定
     fread(&topData->location, sizeof(float) * 3, 1, fpw);
@@ -146,11 +143,94 @@ void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
     fseek(fpw, 4, SEEK_CUR);
 }
 
-struct surface{
-    char face_vert_index[2][3];
+struct Surface{
+    unsigned short face_vert_index[3]; //参照頂点
 };
 
+void getSurface(struct Surface *surface, FILE *fpw){
 
+    for(int i=0; i < 3; i++) {
+        char face_vert_index[2];
+        fread(&face_vert_index, 2, 1, fpw);
+
+        surface->face_vert_index[i] = *((short*)face_vert_index);
+    }
+}
+
+struct Texture{
+    TextBuf path; //テクスチャパス
+};
+
+void getTexture(struct Texture *texture, FILE *fpw){
+    fread(&texture->path.byte_size, sizeof(int), 1, fpw);
+    fread(&texture->path.byte, texture->path.byte_size, 1, fpw);
+}
+
+struct Material{
+    TextBuf materialName; //素材名
+
+    float diffuse[4]; //Diffuse (R,G,B,A)
+    float specular[3]; //Specular (R,G,B)
+    float specular_coefficient; //Specular係数
+    float ambient[3]; //ambient (R,G,B)
+
+    char drawing_flag; //描画フラグ(8bit) TODO 一時的にcharにしてるけど、bit flagを作ること。
+
+    float edge_color[4]; //エッジ色 (R,G,B,A)
+    float edge_size; //エッジサイズ
+
+    char normal_texture_index[1]; //通常テクスチャ, テクスチャテーブルの参照Index
+    char sphere_texture_index[1]; //スフィアテクスチャ, テクスチャテーブルの参照Index  ※テクスチャ拡張子の制限なし
+    char sphere_mode; //スフィアモード 0:無効 1:乗算(sph) 2:加算(spa) 3:サブテクスチャ(追加UV1のx,yをUV参照して通常テクスチャ描画を行う)
+
+    char share_toon_flag; //共有Toonフラグ 0:継続値は個別Toon 1:継続値は共有Toon
+
+    char toon[1024]; //Toonのデータ
+
+    TextBuf memo; //メモ : 自由欄／スクリプト記述／エフェクトへのパラメータ配置など
+
+    int vertex_size; //材質に対応する面(頂点)数 (必ず3の倍数になる)
+};
+void getMaterialData(struct Header header, struct Material *material, FILE *fpw){
+    //素材の名前を設定
+    fread(&material->materialName.byte_size, sizeof(int), 1, fpw);
+    fread(&material->materialName.byte, material->materialName.byte_size, 1, fpw);
+    //Diffuse, Specular, Specular係数, Ambientを順に設定
+    fseek(fpw, 4, SEEK_CUR);
+    fread(&material->diffuse, sizeof(float)*4, 1, fpw);
+    fread(&material->specular, sizeof(float)*3, 1, fpw);
+    fread(&material->specular_coefficient, sizeof(float), 1, fpw);
+    fread(&material->ambient, sizeof(float)*3, 1, fpw);
+    //描画フラグを設定
+    fread(&material->drawing_flag, sizeof(char), 1, fpw);
+    //エッジ系
+    fread(&material->edge_color, sizeof(float)*4, 1, fpw);
+    fread(&material->edge_size, sizeof(float)*4, 1, fpw);
+    //通常テクスチャ
+    fread(&material->normal_texture_index, header.texture_index_size[0], 1, fpw);
+    //スフィアテクスチャ
+    fread(&material->sphere_texture_index, header.texture_index_size[0], 1, fpw);
+    //スフィアモード
+    fread(&material->sphere_mode, sizeof(char),1 , fpw);
+    printf("カレント:%lx\n", ftell(fpw));
+
+    //共有Toonフラグ
+    fread(&material->share_toon_flag, sizeof(char), 1, fpw);
+    switch (material->share_toon_flag) {
+        case 0: //個別Toon
+            fread(&material->toon, header.texture_index_size[0], 1, fpw);
+            break;
+        case 1: //共有Toon
+            fread(&material->toon, sizeof(char), 1, fpw);
+            break;
+    }
+    //メモ
+    fseek(fpw, 4, SEEK_CUR);
+    fread(&material->memo.byte_size, sizeof(int), 1, fpw);
+    fread(&material->memo.byte, material->memo.byte_size, 1, fpw);
+    //材質に対応する面(頂点)数 (必ず3の倍数になる)
+    fread(&material->vertex_size, sizeof(int), 1, fpw);
+}
 
 char* decode(char* string, int length){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
     char inbuf[MAX_BUF + 1] = {0};
@@ -183,12 +263,46 @@ int main(){
     getModelInfo(fpw, &model);
 
     //頂点データの宣言
-    struct TopData topData[45104];
-    for(int i = 0; i < 45104;i++) {
+    fseek(fpw, 4, SEEK_CUR);
+    printf("カレント:%lx\n", ftell(fpw));
+    int top_len;
+    fread(&top_len, sizeof(int), 1, fpw);
+    printf("頂点サイズ:%d\n", top_len);
+    struct TopData topData[top_len];
+    for(int i = 0; i < top_len;i++) {
         getTopData(fpw, &topData[i], header);
         fseek(fpw, -12, SEEK_CUR);
-        printf("%d\n", i);
     }
 
+    //面データ
+    fseek(fpw, 8, SEEK_CUR);
+    int surface_len;
+    fread(&surface_len, sizeof(int), 1, fpw);
+    fseek(fpw, 0, SEEK_CUR);
     printf("カレント:%lx\n", ftell(fpw));
+    printf("面サイズ:%d\n", surface_len);
+    struct Surface surface[74805];
+    for(int i = 0; i < 74805; i++){
+        getSurface(&surface[i], fpw);
+    }
+
+    //テクスチャデータ
+    int texture_size;
+    fread(&texture_size, sizeof(int),1, fpw);
+    printf("テクスチャデータサイズ:%d\n", texture_size);
+    for(int i = 0; i < texture_size; i++){
+        struct Texture texture;
+        getTexture(&texture, fpw);
+        printf("テクスチャパス:%s, %d\n", decode(texture.path.byte, texture.path.byte_size), i);
+    }
+
+    //素材データ
+    int material_size;
+    fread(&material_size, sizeof(int), 1, fpw);
+    struct Material material[material_size];
+    for(int i = 0; i < material_size; i++){
+        getMaterialData(header, &material[0], fpw);
+
+    }
+    printf("サイズ:%d\n", material_size);
 }
