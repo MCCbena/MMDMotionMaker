@@ -1,7 +1,6 @@
 #include <stdio.h>
-#include <iconv.h>
-#include <string.h>
 #include <json-c/json.h>
+#include "uitls/LangConv.h"
 
 #define MAX_BUF 1024
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
@@ -30,20 +29,28 @@ struct Header {
 };
 
 struct Model {
-    TextBuf mode_name; //モデル名
-    TextBuf comment; //コメント
+    TextBuf model_name_jp; //モデル名
+    TextBuf comment_jp; //コメント
+    //英語版
+    TextBuf model_name_en;
+    TextBuf comment_en;
 
 };
 
 void getModelInfo(FILE *fpw, struct Model *model){
     //モデル名を取得
-    fread(&model->mode_name.byte_size, sizeof(int), 1, fpw);
-    fread(&model->mode_name.byte, model->mode_name.byte_size, 1, fpw);
+    fread(&model->model_name_jp.byte_size, sizeof(int), 1, fpw);
+    fread(&model->model_name_jp.byte, model->model_name_jp.byte_size, 1, fpw);
+    //英語版
+    fread(&model->model_name_en.byte_size, sizeof(int), 1, fpw);
+    fread(&model->model_name_en.byte, model->model_name_en.byte_size, 1, fpw);
 
-    fseek(fpw, 8+17 + model->mode_name.byte_size, SEEK_SET);
     //モデルの説明を取得
-    fread(&model->comment.byte_size, sizeof(int), 1, fpw);
-    fread(&model->comment.byte, model->comment.byte_size, 1, fpw);
+    fread(&model->comment_jp.byte_size, sizeof(int), 1, fpw);
+    fread(&model->comment_jp.byte, model->comment_jp.byte_size, 1, fpw);
+    //英語版
+    fread(&model->comment_en.byte_size, sizeof(int), 1, fpw);
+    fread(&model->comment_en.byte, model->comment_en.byte_size, 1, fpw);
 }
 struct BDEF1{ //ウェイト変形方式:1
     char bone1[2]; //ウェイト1.0の単一ボーン(参照Index)
@@ -88,8 +95,6 @@ struct TopData{
 
 };
 void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
-    fseek(fpw, 8, SEEK_CUR);
-
     //位置を設定
     fread(&topData->location, sizeof(float) * 3, 1, fpw);
     //法線を設定
@@ -140,7 +145,6 @@ void getTopData(FILE *fpw, struct TopData *topData, struct Header header){
 
     }
     fread(&topData->edge_magnification, sizeof(float), 1, fpw);
-    fseek(fpw, 4, SEEK_CUR);
 }
 
 struct Surface{
@@ -150,10 +154,7 @@ struct Surface{
 void getSurface(struct Surface *surface, FILE *fpw){
 
     for(int i=0; i < 3; i++) {
-        char face_vert_index[2];
-        fread(&face_vert_index, 2, 1, fpw);
-
-        surface->face_vert_index[i] = *((short*)face_vert_index);
+        fread(&surface->face_vert_index[i], 2, 1, fpw);
     }
 }
 
@@ -167,7 +168,8 @@ void getTexture(struct Texture *texture, FILE *fpw){
 }
 
 struct Material{
-    TextBuf materialName; //素材名
+    TextBuf materialName_jp; //素材名
+    TextBuf materialName_en;
 
     float diffuse[4]; //Diffuse (R,G,B,A)
     float specular[3]; //Specular (R,G,B)
@@ -179,8 +181,8 @@ struct Material{
     float edge_color[4]; //エッジ色 (R,G,B,A)
     float edge_size; //エッジサイズ
 
-    char normal_texture_index[1]; //通常テクスチャ, テクスチャテーブルの参照Index
-    char sphere_texture_index[1]; //スフィアテクスチャ, テクスチャテーブルの参照Index  ※テクスチャ拡張子の制限なし
+    char *normal_texture_index; //通常テクスチャ, テクスチャテーブルの参照Index
+    char *sphere_texture_index; //スフィアテクスチャ, テクスチャテーブルの参照Index  ※テクスチャ拡張子の制限なし
     char sphere_mode; //スフィアモード 0:無効 1:乗算(sph) 2:加算(spa) 3:サブテクスチャ(追加UV1のx,yをUV参照して通常テクスチャ描画を行う)
 
     char share_toon_flag; //共有Toonフラグ 0:継続値は個別Toon 1:継続値は共有Toon
@@ -193,10 +195,12 @@ struct Material{
 };
 void getMaterialData(struct Header header, struct Material *material, FILE *fpw){
     //素材の名前を設定
-    fread(&material->materialName.byte_size, sizeof(int), 1, fpw);
-    fread(&material->materialName.byte, material->materialName.byte_size, 1, fpw);
+    fread(&material->materialName_jp.byte_size, sizeof(int), 1, fpw);
+    fread(&material->materialName_jp.byte, material->materialName_jp.byte_size, 1, fpw);
+    //英語版
+    fread(&material->materialName_en, sizeof(int), 1, fpw);
+    fread(&material->materialName_en.byte, material->materialName_en.byte_size, 1, fpw);
     //Diffuse, Specular, Specular係数, Ambientを順に設定
-    fseek(fpw, 4, SEEK_CUR);
     fread(&material->diffuse, sizeof(float)*4, 1, fpw);
     fread(&material->specular, sizeof(float)*3, 1, fpw);
     fread(&material->specular_coefficient, sizeof(float), 1, fpw);
@@ -224,33 +228,131 @@ void getMaterialData(struct Header header, struct Material *material, FILE *fpw)
     }
     //メモ
     fread(&material->memo.byte_size, sizeof(int), 1, fpw);
-    printf("カレント:%lx\n", ftell(fpw));
     fread(&material->memo.byte, material->memo.byte_size, 1, fpw);
     //材質に対応する面(頂点)数 (必ず3の倍数になる)
     fread(&material->vertex_size, sizeof(int), 1, fpw);
 }
 
-char* decode(char* string, int length){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
-    char inbuf[MAX_BUF + 1] = {0};
-    char outbuf[MAX_BUF + 1] = {0};
-    char *in = inbuf;
-    char *out = outbuf;
-    size_t in_size = (size_t) MAX_BUF;
-    size_t out_size = (size_t) MAX_BUF;
 
-    iconv_t cd = iconv_open("UTF-8", "UTF-16");
+typedef struct{ //接続先0
+    float location_offset[3]; //座標オフセット, ボーン位置からの相対分
+}Connect0;
+typedef struct{ //接続先1
+    char *connected_bone_index; //ボーンIndexサイズ  | 接続先ボーンのボーンIndex
+}Connect1;
 
-    memcpy(in, string, length);
-    iconv(cd, &in, &in_size, &out, &out_size);
-    iconv_close(cd);
+typedef struct { //回転付与:1 または 移動付与:1
+    char *parent_bone_index; //付与親ボーンのボーンIndex
+    float grant_rate; //付与率
+}Imparted;
 
-    return strdup(outbuf);
+typedef struct { //軸固定
+    float shaft_vector[3]; //軸の方向ベクトル
+}FixedShaft;
+typedef struct { //ローカル軸
+    float x_vector[3]; //X軸方向のベクトル
+    float z_vector[3]; //y軸方向のベクトル
+}LocalShaft;
+
+typedef struct { //外部親変形
+    int key; //キー値
+}Deformation;
+
+typedef struct { //IKリンク
+    char *linkBone_index_size; //リンクボーンのボーンIndex
+    char limit_angele; //角度制限 0:OFF 1:ON
+
+    float lower_limit[3]; //下限 (x,y,z) -> ラジアン角
+    float upper_limit[3]; //上限 (x,y,z) -> ラジアン角
+} IKLink;
+typedef struct {
+    char *IK_targetBone_index_size; //IKターゲットボーンのボーンIndex
+    int IK_loop_count; //IKループ回数
+    float IK_limit_angle; //IKループ計算時の1回あたりの制限角度 -> ラジアン角
+
+    int IK_link_count; //後続の要素数
+
+    IKLink ikLink[4]; //IKリンクの要素
+}IK;
+
+struct Bone{
+    TextBuf model_name_jp; //ボーンの名前
+    TextBuf model_name_en; //英語版
+
+    float locations[3]; //位置
+
+    char *parent_bone_index; //親ボーンのボーンIndex
+    int transformation_hierarchy; //変形階層
+
+    short bone_flags; //TODO ここにはbitflagが入る
+
+    //bone_flagsの値で変動する
+    Connect0 connect0;
+    Connect1 connect1;
+    Imparted imparted;
+    FixedShaft fixedShaft;
+    LocalShaft localShaft;
+    Deformation deformation;
+    IK ik;
+};
+
+void getBone(struct Header header, struct Bone *bone, FILE *fpw){
+    //ボーン名の書き込み
+    fread(&bone->model_name_jp.byte_size, sizeof(int), 1, fpw);
+    fread(&bone->model_name_jp.byte, bone->model_name_jp.byte_size, 1, fpw);
+    //英語版
+    fread(&bone->model_name_en.byte_size, sizeof(int), 1, fpw);
+    fread(&bone->model_name_en.byte, bone->model_name_en.byte_size, 1, fpw);
+    //位置の書き込み
+    fread(&bone->locations, sizeof(float)*3, 1, fpw);
+    //親ボーンのボーンindex
+    fread(&bone->parent_bone_index, header.bone_index_size[0], 1, fpw);
+    //変形階層の書き込み
+    fread(&bone->transformation_hierarchy, sizeof(int), 1, fpw);
+    //ボーンフラグの書き込み
+    fread(&bone->bone_flags, sizeof(short), 1, fpw);
+    //ボーンフラグの選択
+    if ((bone->bone_flags & 0x0001) == 0){ //接続0の場合
+        fread(&bone->connect0, sizeof(Connect0), 1, fpw);
+    }
+    if ((bone->bone_flags & 0x0001) == 1){ //接続1の場合
+        fread(&bone->connect1, header.bone_index_size[0], 1, fpw);
+    }
+    if ((bone->bone_flags & 0x0100) != 0 || (bone->bone_flags & 0x0200) != 0){ //回転付与 or 移動付与が1の場合
+        fread(&bone->imparted.parent_bone_index, header.bone_index_size[0], 1, fpw);
+        fread(&bone->imparted.grant_rate, sizeof(float), 1, fpw);
+    }
+    if ((bone->bone_flags & 0x0400) != 0){ //軸固定が1の場合
+        fread(&bone->fixedShaft, sizeof(FixedShaft), 1, fpw);
+    }
+    if ((bone->bone_flags & 0x0800) != 0){ //ローカル軸が1の場合
+        fread(&bone->localShaft, sizeof(LocalShaft), 1, fpw);
+    }
+    if ((bone->bone_flags & 0x2000) != 0){ //外部親変形が1の場合
+        fread(&bone->deformation, sizeof(Deformation), 1, fpw);
+    }
+    if ((bone->bone_flags & 0x0020) != 0){ //IKが1の場合
+        fread(&bone->ik.IK_targetBone_index_size, header.bone_index_size[0], 1, fpw);
+        fread(&bone->ik.IK_loop_count, sizeof(int), 1, fpw);
+        fread(&bone->ik.IK_limit_angle, sizeof(float), 1, fpw);
+
+        fread(&bone->ik.IK_link_count, sizeof(int), 1, fpw);
+        for(int i = 0; i < bone->ik.IK_link_count; i++){
+            IKLink ikLink;
+            fread(&ikLink.linkBone_index_size, header.bone_index_size[0], 1, fpw);
+            fread(&ikLink.limit_angele, sizeof(char), 1, fpw);
+            if(ikLink.limit_angele == 1){
+                fread(&ikLink.lower_limit, sizeof(float)*3, 1, fpw);
+                fread(&ikLink.upper_limit, sizeof(float)*3, 1, fpw);
+            }
+            //ikLinksへ書き込み
+            bone->ik.ikLink[i] = ikLink;
+        }
+    }
 }
 
 
-char* path = "/home/shuta/ダウンロード/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx";
-int main(){
-
+char* getModel(const char* path){
     FILE *fpw = fopen(path, "rb");
     //ヘッダーの宣言
     struct Header header;
@@ -261,7 +363,6 @@ int main(){
     getModelInfo(fpw, &model);
 
     //頂点データの宣言
-    fseek(fpw, 4, SEEK_CUR);
     printf("カレント:%lx\n", ftell(fpw));
     int top_len;
     fread(&top_len, sizeof(int), 1, fpw);
@@ -269,18 +370,16 @@ int main(){
     struct TopData topData[top_len];
     for(int i = 0; i < top_len;i++) {
         getTopData(fpw, &topData[i], header);
-        fseek(fpw, -12, SEEK_CUR);
     }
 
     //面データ
-    fseek(fpw, 8, SEEK_CUR);
     int surface_len;
     fread(&surface_len, sizeof(int), 1, fpw);
-    fseek(fpw, 0, SEEK_CUR);
+    surface_len = surface_len/3;
     printf("カレント:%lx\n", ftell(fpw));
     printf("面サイズ:%d\n", surface_len);
-    struct Surface surface[74805];
-    for(int i = 0; i < 74805; i++){
+    struct Surface surface[surface_len];
+    for(int i = 0; i < surface_len; i++){
         getSurface(&surface[i], fpw);
     }
 
@@ -291,7 +390,7 @@ int main(){
     for(int i = 0; i < texture_size; i++){
         struct Texture texture;
         getTexture(&texture, fpw);
-        printf("テクスチャパス:%s, %d\n", decode(texture.path.byte, texture.path.byte_size), i);
+        printf("テクスチャパス:%s, %d\n", decode(texture.path.byte, texture.path.byte_size, "UTF-8", "UTF-16"), i);
     }
 
     //素材データ
@@ -302,5 +401,28 @@ int main(){
         getMaterialData(header, &material[i], fpw);
 
     }
-    printf("サイズ:%d\n", material_size);
+
+    //ボーンデータ
+    int bone_size;
+    fread(&bone_size, sizeof(int), 1, fpw);
+    printf("カレント:%lx\n", ftell(fpw));
+
+    struct Bone bone[bone_size];
+    for(int i = 0; i < bone_size; i++){
+        getBone(header, &bone[i], fpw);
+    }
+
+    //jsonの生成
+    struct json_object* jsonMainObject = json_object_new_object(); //メインのjson
+
+    //ボーン
+    struct json_object* jsonMainBoneObject = json_object_new_array(); //ボーンのメインjson
+    for(int i = 0; i < bone_size; i++){
+        struct json_object* jsonBoneObject = json_object_new_object();
+        json_object_object_add(jsonBoneObject, "name", json_object_new_string(decode(bone[i].model_name_jp.byte, bone[i].model_name_jp.byte_size, "UTF-8", "UTF-16")));
+        //jsonを代入
+        json_object_array_add(jsonMainBoneObject,jsonBoneObject);
+    }
+    json_object_object_add(jsonMainObject, "bones", jsonMainBoneObject);
+    printf("%s", json_object_to_json_string(jsonMainObject));
 }

@@ -1,8 +1,9 @@
 #include <Python.h>
 
 extern char* getMotion(const char*);
+extern char* getModel(const char*);
 
-//definition of out method
+//モーションをjsonで吐き出すやつ
 static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
 {
     const char* path = NULL;
@@ -17,10 +18,26 @@ static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
     return Py_BuildValue("s", motion_json);
 }
 
+//モーションをjsonで吐き出すやつ
+static PyObject* getModel_wrapper(PyObject* self, PyObject* args)
+{
+    const char* path = NULL;
+
+    static char* argnames[] = {"path", NULL};
+
+    if (! PyArg_ParseTuple(args, "|s", &path)){
+        return NULL;
+    }
+
+    char* motion_json = getModel(path);
+    return Py_BuildValue("s", motion_json);
+}
+
+
 // メソッドを登録
 static PyMethodDef vmd_methods[] = {
         { "getMotion", getMotion_wrapper, METH_VARARGS, "getMotion to JSON" },
-        { NULL }
+        {"getModel", getModel_wrapper, METH_VARARGS, "getModel to JSON"}
 };
 
 static struct PyModuleDef modules ={

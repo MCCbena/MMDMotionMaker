@@ -2,6 +2,7 @@
 #include <iconv.h>
 #include <string.h>
 #include <json-c/json.h>
+#include "uitls/LangConv.h"
 
 #define MAX_BUF 1024
 
@@ -29,24 +30,6 @@ struct BoneFrame
     float qw; // ボーンのクォータニオンW回転,データがない場合は1
     char bezier[64]; // 補間パラメータ
 };
-
-
-char* decode(char* string, int length){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
-    char inbuf[MAX_BUF + 1] = {0};
-    char outbuf[MAX_BUF + 1] = {0};
-    char *in = inbuf;
-    char *out = outbuf;
-    size_t in_size = (size_t) MAX_BUF;
-    size_t out_size = (size_t) MAX_BUF;
-
-    iconv_t cd = iconv_open("UTF-8", "SHIFT-JIS");
-
-    memcpy(in, string, length);
-    iconv(cd, &in, &in_size, &out, &out_size);
-    iconv_close(cd);
-
-    return strdup(outbuf);
-}
 
 const char *getMotion(const char* path){
     //構造体を宣言
@@ -81,7 +64,7 @@ const char *getMotion(const char* path){
         //jsonの作成
         //ボディ
         //ボーン名
-        json_object_object_add(jsonBoneObject, "boneName", json_object_new_string(decode(boneFrame.name, 15)));
+        json_object_object_add(jsonBoneObject, "boneName", json_object_new_string(decode(boneFrame.name, 15, "UTF-8", "SHIFT-JIS")));
         //フレーム
         json_object_object_add(jsonBoneObject, "frame", json_object_new_int((int) boneFrame.frame));
         //座標用の配列を作成
@@ -103,7 +86,7 @@ const char *getMotion(const char* path){
     //ヘッダーのjsonを作成
     struct json_object* jsonHeaderObject = json_object_new_object();
     json_object_object_add(jsonHeaderObject, "header", json_object_new_string(header.header));
-    json_object_object_add(jsonHeaderObject, "modelName", json_object_new_string(decode(header.modelName, 20)));
+    json_object_object_add(jsonHeaderObject, "modelName", json_object_new_string(decode(header.modelName, 20, "UTF-8", "SHIFT-JIS")));
     json_object_object_add(jsonMainObject, "header", jsonHeaderObject);
     //ボーンをメインのjsonに代入
     json_object_object_add(jsonMainObject,"boneFrame", jsonBoneArrayObject);
