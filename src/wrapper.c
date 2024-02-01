@@ -14,8 +14,8 @@ static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
         return NULL;
     }
 
-    char* motion_json = getMotion(path);
-    return Py_BuildValue("s", motion_json);
+    char* model_json = getMotion(path);
+    return Py_BuildValue("s", model_json);
 }
 
 //モーションをjsonで吐き出すやつ
@@ -36,8 +36,9 @@ static PyObject* getModel_wrapper(PyObject* self, PyObject* args)
 
 // メソッドを登録
 static PyMethodDef vmd_methods[] = {
+        {"getModel", getModel_wrapper, METH_VARARGS, "getModel to JSON"},
         { "getMotion", getMotion_wrapper, METH_VARARGS, "getMotion to JSON" },
-        {"getModel", getModel_wrapper, METH_VARARGS, "getModel to JSON"}
+        {NULL}
 };
 
 static struct PyModuleDef modules ={

@@ -1,9 +1,29 @@
 #include <stdio.h>
 #include <json-c/json.h>
-#include "uitls/LangConv.h"
+#include <iconv.h>
+#include <string.h>
 
 #define MAX_BUF 1024
+
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
+
+char* word_decode(char* string, int length, char* toCode, char* fromCode){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
+    char inbuf[MAX_BUF + 1] = {0};
+    char outbuf[MAX_BUF + 1] = {0};
+    char *in = inbuf;
+    char *out = outbuf;
+    size_t in_size = (size_t) MAX_BUF;
+    size_t out_size = (size_t) MAX_BUF;
+
+    iconv_t cd = iconv_open(toCode, fromCode);
+
+    memcpy(in, string, length);
+    iconv(cd, &in, &in_size, &out, &out_size);
+    iconv_close(cd);
+
+    return strdup(outbuf);
+}
+
 
 typedef struct {
     int byte_size; //バイト数
@@ -351,8 +371,7 @@ void getBone(struct Header header, struct Bone *bone, FILE *fpw){
     }
 }
 
-
-char* getModel(const char* path){
+const char* getModel(const char* path){
     FILE *fpw = fopen(path, "rb");
     //ヘッダーの宣言
     struct Header header;
@@ -363,10 +382,8 @@ char* getModel(const char* path){
     getModelInfo(fpw, &model);
 
     //頂点データの宣言
-    printf("カレント:%lx\n", ftell(fpw));
     int top_len;
     fread(&top_len, sizeof(int), 1, fpw);
-    printf("頂点サイズ:%d\n", top_len);
     struct TopData topData[top_len];
     for(int i = 0; i < top_len;i++) {
         getTopData(fpw, &topData[i], header);
@@ -376,8 +393,6 @@ char* getModel(const char* path){
     int surface_len;
     fread(&surface_len, sizeof(int), 1, fpw);
     surface_len = surface_len/3;
-    printf("カレント:%lx\n", ftell(fpw));
-    printf("面サイズ:%d\n", surface_len);
     struct Surface surface[surface_len];
     for(int i = 0; i < surface_len; i++){
         getSurface(&surface[i], fpw);
@@ -386,11 +401,9 @@ char* getModel(const char* path){
     //テクスチャデータ
     int texture_size;
     fread(&texture_size, sizeof(int),1, fpw);
-    printf("テクスチャデータサイズ:%d\n", texture_size);
     for(int i = 0; i < texture_size; i++){
         struct Texture texture;
         getTexture(&texture, fpw);
-        printf("テクスチャパス:%s, %d\n", decode(texture.path.byte, texture.path.byte_size, "UTF-8", "UTF-16"), i);
     }
 
     //素材データ
@@ -405,7 +418,6 @@ char* getModel(const char* path){
     //ボーンデータ
     int bone_size;
     fread(&bone_size, sizeof(int), 1, fpw);
-    printf("カレント:%lx\n", ftell(fpw));
 
     struct Bone bone[bone_size];
     for(int i = 0; i < bone_size; i++){
@@ -419,10 +431,10 @@ char* getModel(const char* path){
     struct json_object* jsonMainBoneObject = json_object_new_array(); //ボーンのメインjson
     for(int i = 0; i < bone_size; i++){
         struct json_object* jsonBoneObject = json_object_new_object();
-        json_object_object_add(jsonBoneObject, "name", json_object_new_string(decode(bone[i].model_name_jp.byte, bone[i].model_name_jp.byte_size, "UTF-8", "UTF-16")));
+        json_object_object_add(jsonBoneObject, "name", json_object_new_string(word_decode(bone[i].model_name_jp.byte, bone[i].model_name_jp.byte_size, "UTF-8", "UTF-16")));
         //jsonを代入
         json_object_array_add(jsonMainBoneObject,jsonBoneObject);
     }
     json_object_object_add(jsonMainObject, "bones", jsonMainBoneObject);
-    printf("%s", json_object_to_json_string(jsonMainObject));
+    return json_object_to_json_string(jsonMainObject);
 }

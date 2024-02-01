@@ -6,4 +6,7 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
-waveEncoder.h5
+../waveEncoder.h5
+../test.py
+../src/dist
+../src/VMDConverter.egg-info

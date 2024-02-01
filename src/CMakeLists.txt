@@ -8,5 +8,5 @@ add_executable(test vmdLoader.c
         modelLoader.c
         uitls/LangConv.h)
 target_link_libraries(test json-c)
-include_directories(/usr/include/python3.11)
+include_directories(/usr/include/python3.11, utils)
 
