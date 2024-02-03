@@ -57,27 +57,16 @@ const char *getMotion(const char* path){
     FILE *fpw = fopen(path, "rb");
     fread(&header, sizeof(header), 1, fpw);
 
-    //構造体ファイルの読み過ぎに対応させるために必要（人マニアのモーションを参照
-    int last_frame = 0;
-
-    int i = 0;
+    //構造体ファイルの読み過ぎに対応させるために必要
+    int max_frame;
+    fread(&max_frame, sizeof(int), 1, fpw);
 
     struct json_object* jsonBoneArrayObject = json_object_new_array();
-    while (1) {
+    for (int i = 0; i < max_frame; i++) {
         struct json_object* jsonBoneObject = json_object_new_object();
 
-        //最初の54バイトはヘッダーが書かれてる。111バイトはボーンフレームの中身
-        fseek(fpw, 54 + (111*i), SEEK_SET);
         fread(&boneFrame, sizeof(boneFrame), 1, fpw);
 
-        //ボーンフレームがさっきのループで取得したフレームを下回った場合
-        if((int) boneFrame.frame - last_frame < 0){
-            break;
-        }
-
-        last_frame = (int) boneFrame.frame;
-
-        i++;
         //jsonの作成
         //ボディ
         //ボーン名
@@ -97,7 +86,27 @@ const char *getMotion(const char* path){
         json_object_array_add(quaternion, json_object_new_double(boneFrame.qz));
         json_object_array_add(quaternion, json_object_new_double(boneFrame.qw));
         json_object_object_add(jsonBoneObject, "quaternions", quaternion);
+        //補完パラメータ
+        struct json_object* bezierMainParameters = json_object_new_array();
 
+        int current = 0;
+        for(int j = 0; j < 2; j++) {
+            //ベジュ曲線
+            struct json_object* bezierParameters = json_object_new_array();
+            for(int k = 0; k < 2; k++) {
+                struct json_object* bezierLocations = json_object_new_array();
+                for(int l = 0; l < 4; l++) {
+                    json_object_array_add(bezierLocations, json_object_new_double(boneFrame.bezier[current]));
+                    current++;
+                }
+                json_object_array_add(bezierParameters, bezierLocations);
+            }
+            json_object_array_add(bezierMainParameters,bezierParameters);
+        }
+        //ベジュ曲線
+        json_object_object_add(jsonBoneObject, "bezier", bezierMainParameters);
+
+        //最終代入
         json_object_array_add(jsonBoneArrayObject, jsonBoneObject);
     }
     //ヘッダーのjsonを作成
@@ -110,4 +119,9 @@ const char *getMotion(const char* path){
 
 
     return json_object_get_string(jsonMainObject);
+}
+
+int main(){
+    printf("%s\n", getMotion("/home/shuta/ダウンロード/人マニア（モーション配布）/人マニア.vmd"));
+    return 0;
 }
