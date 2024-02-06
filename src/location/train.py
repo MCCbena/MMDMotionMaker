@@ -1,3 +1,4 @@
+import gc
 import glob
 import json
 import os
@@ -10,8 +11,8 @@ import numpy as np
 from tensorflow.keras import models, layers
 from sklearn.metrics import mean_squared_error
 
-bones = VMDConverter.getModel("..//YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx")
-datasets = "../motions/"
+bones = VMDConverter.getModel("../../YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx")
+datasets = "../../motions/"
 
 hop_length = 1024*2
 max_sound_length = 7034640
@@ -37,7 +38,7 @@ for dataset in os.listdir(datasets):
     bone_count = {}
     file_name = glob.glob(datasets + dataset + "/*.vmd")[0]
     vmd = json.loads(VMDConverter.getMotion(file_name))
-    vmds[datasets + dataset] = vmd
+    # vmds[datasets + dataset] = vmd
     total_bone = len(vmd["boneFrame"])
 
     # ボーンが何個あるか確認
@@ -50,7 +51,7 @@ for dataset in os.listdir(datasets):
     for key, value in bone_count.items():
         if (value / total_bone * 100 > 1) and (key not in index) and (key in bones):
             index[key] = len(index)
-    del vmd
+    gc.collect()
 
 Xdata = []
 Ydata = []
