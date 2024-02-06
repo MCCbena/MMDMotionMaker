@@ -3,10 +3,9 @@ project(test C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(test vmdLoader.c
-        wrapper.c
-        modelLoader.c
-        uitls/LangConv.h)
+add_executable(test vmdLoader.c)
+        #wrapper.c
+        #modelLoader.c)
 target_link_libraries(test json-c)
-include_directories(/usr/include/python3.11, utils)
+include_directories(/usr/include/python3.11)
 

@@ -102,6 +102,7 @@ const char *getMotion(const char* path){
                 json_object_array_add(bezierParameters, bezierLocations);
             }
             json_object_array_add(bezierMainParameters,bezierParameters);
+            //json_object_put(bezierParameters);
         }
         //ベジュ曲線
         json_object_object_add(jsonBoneObject, "bezier", bezierMainParameters);
@@ -116,9 +117,12 @@ const char *getMotion(const char* path){
     json_object_object_add(jsonMainObject, "header", jsonHeaderObject);
     //ボーンをメインのjsonに代入
     json_object_object_add(jsonMainObject,"boneFrame", jsonBoneArrayObject);
+    const char* return_json = strdup(json_object_to_json_string(jsonMainObject));
 
-
-    return json_object_get_string(jsonMainObject);
+    json_object_put(jsonHeaderObject);
+    json_object_put(jsonBoneArrayObject);
+    json_object_put(jsonMainObject);
+    return return_json;
 }
 
 int main(){
