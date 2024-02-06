@@ -3,7 +3,7 @@
   <component name="Black">
     <option name="sdkName" value="Python 3.11 (MMDMotionMaker)" />
   </component>
-  <component name="ProjectRootManager">
-    <output url="file://$PROJECT_DIR$/out" />
+  <component name="CMakeWorkspace">
+    <contentRoot DIR="$PROJECT_DIR$/src" />
   </component>
 </project>

@@ -12,7 +12,7 @@ from tensorflow.keras import models, layers
 from sklearn.metrics import mean_squared_error
 
 bones = VMDConverter.getModel("../../YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx")
-datasets = "../../motions/"
+datasets = "../../dataset/"
 
 hop_length = 1024*2
 max_sound_length = 7034640
@@ -38,7 +38,8 @@ for dataset in os.listdir(datasets):
     bone_count = {}
     file_name = glob.glob(datasets + dataset + "/*.vmd")[0]
     vmd = json.loads(VMDConverter.getMotion(file_name))
-    # vmds[datasets + dataset] = vmd
+    vmds[datasets + dataset] = vmd
+    print(dataset)
     total_bone = len(vmd["boneFrame"])
 
     # ボーンが何個あるか確認
@@ -57,6 +58,27 @@ Xdata = []
 Ydata = []
 for path, vmd in vmds.items():
     motion_data = []  # モーションデータ
+    # モーションの前処理
+    print(path)
+    for i in range(max_motion_frame):
+        motion_data.append(numpy.zeros((len(index) + 1, 3)))
+
+    for bone in vmd["boneFrame"]:
+        if bone["boneName"] not in index:
+            continue
+
+        try:
+            motion_array = motion_data[bone["frame"]]
+        except:
+            continue
+        locations = bone["locations"]
+        location_array = numpy.array([locations[0], locations[1], locations[2]])
+        motion_array = numpy.insert(motion_array, index[bone["boneName"]], location_array, axis=0)
+        motion_array = numpy.delete(motion_array, len(index), 0)
+        motion_data[bone["frame"]] = motion_array
+    motion_data = numpy.array(motion_data)
+    print(motion_data.shape)
+    Ydata.append(motion_data)
 
     # オーディオの前処理
     y, sr = librosa.load(path + "/music.wav")
@@ -72,31 +94,15 @@ for path, vmd in vmds.items():
     x_dB = librosa.power_to_db(x, ref=np.max) / 80
     print(x_dB.shape)
     Xdata.append(x_dB)
-    # モーションの前処理
-    for i in range(max_motion_frame):
-        motion_data.append(numpy.zeros((len(index) + 1, 3)))
-
-    for bone in vmd["boneFrame"]:
-        if bone["boneName"] not in index:
-            continue
-        motion_array = motion_data[bone["frame"]]
-        locations = bone["locations"]
-        location_array = numpy.array([locations[0], locations[1], locations[2]])
-        motion_array = numpy.insert(motion_array, index[bone["boneName"]], location_array, axis=0)
-        motion_array = numpy.delete(motion_array, len(index), 0)
-        motion_data[bone["frame"]] = motion_array
-    motion_data = numpy.array(motion_data)
-    print(motion_data.shape)
-    print(path)
     print("--------------------------")
-    Ydata.append(motion_data)
+
 Ydata = numpy.array(Ydata, dtype="float16")/100
 Xdata = numpy.array(Xdata, dtype="float16")
 
-train = Ydata[0:6]
-train1 = Xdata[0:6]
-test = Ydata[7:]
-test1 = Xdata[7:]
+train = Ydata[0:25]
+train1 = Xdata[0:25]
+test = Ydata[26:]
+test1 = Xdata[26:]
 
 model = models.Sequential()
 model.add(layers.LSTM(64, return_sequences=True))
@@ -108,10 +114,10 @@ model.add(layers.Dropout(0.5))
 model.add(layers.Flatten())
 model.add(layers.Dense(8000))
 model.add(layers.Reshape((8000, -1)))
-model.add(layers.Dense(64))
-model.add(layers.Reshape((8000, 64, -1)))
+model.add(layers.Dense(76))
+model.add(layers.Reshape((8000, 76, -1)))
 model.add(layers.Dense(3))
-model.add(layers.Reshape((8000, 64, 3)))
+model.add(layers.Reshape((8000, 76, 3)))
 
 # 合体
 model.compile(optimizer="adam", loss="mean_squared_error")
