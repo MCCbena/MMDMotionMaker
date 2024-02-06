@@ -70,7 +70,9 @@ const char *getMotion(const char* path){
         //jsonの作成
         //ボディ
         //ボーン名
-        json_object_object_add(jsonBoneObject, "boneName", json_object_new_string(word_decode1(boneFrame.name, 15, "UTF-8", "SHIFT-JIS")));
+        char* name = (word_decode1(boneFrame.name, 15, "UTF-8", "SHIFT-JIS"));
+        json_object_object_add(jsonBoneObject, "boneName", json_object_new_string(name));
+        free(name);
         //フレーム
         json_object_object_add(jsonBoneObject, "frame", json_object_new_int((int) boneFrame.frame));
         //座標用の配列を作成
@@ -112,16 +114,23 @@ const char *getMotion(const char* path){
     //ヘッダーのjsonを作成
     struct json_object* jsonHeaderObject = json_object_new_object();
     json_object_object_add(jsonHeaderObject, "header", json_object_new_string(header.header));
-    json_object_object_add(jsonHeaderObject, "modelName", json_object_new_string(word_decode1(header.modelName, 20, "UTF-8", "SHIFT-JIS")));
+    char* word = word_decode1(header.modelName, 20, "UTF-8", "SHIFT-JIS");
+    json_object_object_add(jsonHeaderObject, "modelName", json_object_new_string(word));
+    free(word);
     json_object_object_add(jsonMainObject, "header", jsonHeaderObject);
     //ボーンをメインのjsonに代入
     json_object_object_add(jsonMainObject,"boneFrame", jsonBoneArrayObject);
-    const char* return_json = strdup(json_object_to_json_string(jsonMainObject));
+
+    char *return_json = strdup(json_object_to_json_string(jsonMainObject));
     json_object_put(jsonMainObject);
     return return_json;
 }
 
 int main(){
-    printf("%s\n", getMotion("/home/shuta/ダウンロード/人マニア（モーション配布）/人マニア.vmd"));
+    for(int i = 0; i < 300; i++){
+        char* test = (char*) getMotion("/home/shuta/ダウンロード/mmdバリューセット/sm42576784/ラビットホール.vmd");
+        free(test);
+        printf("%d\n", i);
+    }
     return 0;
 }

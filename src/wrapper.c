@@ -15,7 +15,9 @@ static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
     }
 
     char* model_json = getMotion(path);
-    return Py_BuildValue("s", model_json);
+    PyObject* pyObject = Py_BuildValue("s", model_json);
+    free(model_json);
+    return pyObject;
 }
 
 //モーションをjsonで吐き出すやつ
