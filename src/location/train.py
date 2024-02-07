@@ -118,13 +118,14 @@ model.add(layers.Dense(76))
 model.add(layers.Reshape((8000, 76, -1)))
 model.add(layers.Dense(3))
 model.add(layers.Reshape((8000, 76, 3)))
+model.add(layers.Activation("tanh"))
 
 # 合体
 model.compile(optimizer="adam", loss="mean_squared_error")
 #model.summary()
 history = model.fit(
     train1, train,
-    epochs=100,
+    epochs=10,
     batch_size=1,
     shuffle=True,
     validation_data=(test1, test)
@@ -141,3 +142,15 @@ plt.xlabel('Epoch')
 plt.grid()
 plt.legend(['Train', 'Validation'], loc='upper left')
 plt.savefig("plot.png", format="png")
+
+result = model.predict(test1[0][numpy.newaxis, :, :])*100
+
+print(result[0].shape)
+print(test[0].shape)
+
+dataO = test[0].reshape((8000, 228))*100
+dataI = result[0].reshape((8000, 228))
+
+mse_data = mean_squared_error(dataI, dataO)
+print("MSE値", mse_data)
+
