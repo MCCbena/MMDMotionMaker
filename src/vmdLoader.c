@@ -118,6 +118,8 @@ const char *getMotion(const char* path){
     json_object_object_add(jsonHeaderObject, "modelName", json_object_new_string(word));
     free(word);
     json_object_object_add(jsonMainObject, "header", jsonHeaderObject);
+    //最大フレームを格納
+    json_object_object_add(jsonMainObject, "maxFrame", json_object_new_int(max_frame));
     //ボーンをメインのjsonに代入
     json_object_object_add(jsonMainObject,"boneFrame", jsonBoneArrayObject);
 
@@ -126,11 +128,156 @@ const char *getMotion(const char* path){
     return return_json;
 }
 
-int main(){
-    for(int i = 0; i < 300; i++){
-        char* test = (char*) getMotion("/home/shuta/ダウンロード/mmdバリューセット/sm42576784/ラビットホール.vmd");
-        free(test);
-        printf("%d\n", i);
+void writeMotion(char* output_file_path, char* json){
+    struct json_object* output_data = json_tokener_parse(json);
+
+    //ヘッダーを取得-----------------------------------------------------
+    struct Header header;
+    struct json_object* header_object;
+    json_object_object_get_ex(output_data, "header", &header_object);
+
+    //ヘッダー名の読み込み
+    struct json_object* header_name_object;
+    json_object_object_get_ex(header_object, "header", &header_name_object);
+    memcpy(header.header, word_decode1((char*) json_object_get_string(header_name_object), 30, "Shift-JIS", "UTF-8"), 30);
+    //最大フレームを読み込み
+    struct json_object* max_frame_object;
+    json_object_object_get_ex(output_data, "maxFrame", &max_frame_object);
+    int max_frame = json_object_get_int(max_frame_object);
+
+    //モデル名の読み込み
+    struct json_object* model_name_object;
+    json_object_object_get_ex(header_object, "modelName", &model_name_object);
+    memcpy(header.modelName, word_decode1((char* )json_object_get_string(model_name_object), 30, "Shift-JIS", "UTF-8"), 20);
+
+
+    //ボーンフレームを取得---------------------------------------------------
+    struct json_object* boneFrame_objects;
+    json_object_object_get_ex(output_data, "boneFrame", &boneFrame_objects);
+
+    //ボーンを配列として読み込み
+    unsigned long  boneFrame_length = json_object_array_length(boneFrame_objects);
+    struct BoneFrame boneFrame[boneFrame_length];
+
+    //構造体に書き込み
+    for (int i = 0; i < boneFrame_length; i++){
+        struct json_object* boneFrame_object = json_object_array_get_idx(boneFrame_objects, i);
+        printf("%s\n", json_object_get_string(boneFrame_object));
+
+        //ボーン名の読み込み
+        struct json_object* boneFrame_name_object;
+        json_object_object_get_ex(boneFrame_object, "boneName", &boneFrame_name_object);
+        memcpy(boneFrame[i].name, word_decode1((char* ) json_object_get_string(boneFrame_name_object), 30, "Shift-JIS", "UTF-8"), 15);
+
+        //ボーンフレームの読み込み
+        struct json_object* boneFame_frame_object;
+        json_object_object_get_ex(boneFrame_object, "frame", &boneFame_frame_object);
+        boneFrame[i].frame = json_object_get_int(boneFame_frame_object);
+
+        //ボーンの座標
+        struct json_object* boneFrame_locations_object;
+        json_object_object_get_ex(boneFrame_object, "locations", &boneFrame_locations_object);
+        for(int j = 0; j < 3; j++){
+            struct json_object* boneFrame_location_object = json_object_array_get_idx(boneFrame_locations_object, j);
+            float boneFrame_location = (float) json_object_get_double(boneFrame_location_object);
+
+            //書き込み別
+            switch (j) {
+                case 0:
+                    boneFrame[i].x = boneFrame_location;
+                    break;
+                case 1:
+                    boneFrame[i].y = boneFrame_location;
+                    break;
+                case 2:
+                    boneFrame[i].z = boneFrame_location;
+                    break;
+            }
+        }
+
+        //クォータニオンの読み込み
+        struct json_object* boneFrame_quaternions_object;
+        json_object_object_get_ex(boneFrame_object, "quaternions", &boneFrame_quaternions_object);
+        for(int j = 0; j < 4; j++){
+            struct json_object* boneFrame_quaternion_object = json_object_array_get_idx(boneFrame_quaternions_object, j);
+            float boneFrame_quaternion = (float) json_object_get_double(boneFrame_quaternion_object);
+
+            //書き込み別
+            switch (j) {
+                case 0:
+                    boneFrame[i].qx = boneFrame_quaternion;
+                    break;
+                case 1:
+                    boneFrame[i].qy = boneFrame_quaternion;
+                    break;
+                case 2:
+                    boneFrame[i].qz = boneFrame_quaternion;
+                    break;
+                case 3:
+                    boneFrame[i].qw = boneFrame_quaternion;
+                    break;
+            }
+        }
+
+        //ベジェ曲線の読み込み
+        char boneFrame_bezier_positions[18];
+
+        //めんどくさい超入れ子配列の読み込み
+        int current = 0;
+        struct json_object* boneFrame_beziers_object;
+        json_object_object_get_ex(boneFrame_object, "bezier", &boneFrame_beziers_object);
+        for(int j = 0; j < 2; j++){
+            struct json_object* boneFrame_beziers_object1 = json_object_array_get_idx(boneFrame_beziers_object, j);
+            for(int k = 0; k < 2; k++){
+                struct json_object* boneFrame_beziers_object2 = json_object_array_get_idx(boneFrame_beziers_object1, k);
+                for(int l = 0; l < 4; l++){
+                    struct json_object* boneFrame_beziers_position = json_object_array_get_idx(boneFrame_beziers_object2, l);
+                    boneFrame_bezier_positions[current] = (char )json_object_get_double(boneFrame_beziers_position);
+                    current++;
+                }
+            }
+        }
+        //下のベジェで01と00を入れる場合は16, 17と宣言してるからここで別途入れる
+        boneFrame_bezier_positions[16] = 1;
+        boneFrame_bezier_positions[17] = 0;
+
+        enum beziers{
+            X_x1 = 0,X_y1 = 1,
+            X_x2 = 2,X_y2 = 3,
+            Y_x1 = 4,Y_y1 = 5,
+            Y_x2 = 6,Y_y2 = 7,
+            Z_x1 = 8,Z_y1 = 9,
+            Z_x2 = 10,Z_y2 = 11,
+            R_x1 = 12,R_y1 = 13,
+            R_x2 = 14,R_y2 = 15,
+            a01 = 16, a00 = 17
+        };
+        //書き込む順番を指定
+        char writing_order[64] = {
+                X_x1,Y_x1,Z_x1,R_x1,X_y1,Y_y1,Z_y1,R_y1,
+                X_x2,Y_x2,Z_x2,R_x2,X_y2,Y_y2,Z_y2,R_y2,
+                Y_x1,Z_x1,R_x1,X_y1,Y_y1,Z_y1,R_y1,X_x2,
+                Y_x2,Z_x2,R_x2,X_y2,Y_y2,Z_y2,R_y2, a01,
+                Z_x1,R_x1,X_y1,Y_y1,Z_y1,R_y1,X_x2,Y_x2,
+                Z_x2,R_x2,X_y2,Y_y2,Z_y2,R_y2, a01, a00,
+                R_x1,X_y1,Y_y1,Z_y1,R_y1,X_x2,Y_x2,Z_x2,
+                R_x2,X_y2,Y_y2,Z_y2,R_y2, a01, a00, a00
+        };
+        //ベジェ本体に書き込み
+        for (int j = 0; j < 64; j++) {
+            boneFrame[i].bezier[j] = boneFrame_bezier_positions[writing_order[j]];
+        }
     }
+
+    //ファイルに書き込み------------------------------------------
+    FILE *fpw = fopen(output_file_path, "w");
+    fwrite(&header, 1, sizeof(header), fpw);//ヘッダーを書き込み
+    fwrite(&max_frame, 1, sizeof(int), fpw);//最大フレームを書き込み
+    fwrite(&boneFrame,1, sizeof(boneFrame), fpw);//ボーンフレーム
+    fclose(fpw);
+}
+
+int main(){
+    writeMotion("/home/shuta/ダウンロード/test/test.vmd", (char*) getMotion("/mnt/E86884F46884C334/D/src/motions/sm29023367/motion.vmd"));
     return 0;
 }
