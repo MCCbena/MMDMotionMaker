@@ -2,13 +2,13 @@
 
 extern char* getMotion(const char*);
 extern char* getModel(const char*);
+extern void writeMotion(const char*, const char*);
 
 //モーションをjsonで吐き出すやつ
 static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
 {
     const char* path = NULL;
 
-    static char* argnames[] = {"path", NULL};
 
     if (! PyArg_ParseTuple(args, "|s", &path)){
         return NULL;
@@ -20,12 +20,11 @@ static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
     return pyObject;
 }
 
-//モーションをjsonで吐き出すやつ
+//モデルをjsonで吐き出すやつ
 static PyObject* getModel_wrapper(PyObject* self, PyObject* args)
 {
     const char* path = NULL;
 
-    static char* argnames[] = {"path", NULL};
 
     if (! PyArg_ParseTuple(args, "|s", &path)){
         return NULL;
@@ -35,11 +34,24 @@ static PyObject* getModel_wrapper(PyObject* self, PyObject* args)
     return Py_BuildValue("s", motion_json);
 }
 
+//モーションをjsonからVMDに書き込むやつ
+static PyObject* writeMotion_wrapper(PyObject* self, PyObject* args){
+    const char* output_path = NULL;
+    const char* json = NULL;
+
+    if(!PyArg_ParseTuple(args, "|ss", &output_path, &json)){
+        return NULL;
+    }
+    writeMotion(output_path, json);
+    return Py_None;
+}
+
 
 // メソッドを登録
 static PyMethodDef vmd_methods[] = {
-        {"getModel", getModel_wrapper, METH_VARARGS, "getModel to JSON"},
-        { "getMotion", getMotion_wrapper, METH_VARARGS, "getMotion to JSON" },
+        {"getModel", getModel_wrapper, METH_VARARGS, "get Model to JSON"},
+        { "getMotion", getMotion_wrapper, METH_VARARGS, "get Motion to JSON" },
+        {"writeMotion", writeMotion_wrapper, METH_VARARGS, "write JSON motion in VMD"},
         {NULL}
 };
 

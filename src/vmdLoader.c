@@ -128,7 +128,7 @@ const char *getMotion(const char* path){
     return return_json;
 }
 
-void writeMotion(char* output_file_path, char* json){
+void writeMotion(const char* output_file_path, const char* json){
     struct json_object* output_data = json_tokener_parse(json);
 
     //ヘッダーを取得-----------------------------------------------------
@@ -139,7 +139,10 @@ void writeMotion(char* output_file_path, char* json){
     //ヘッダー名の読み込み
     struct json_object* header_name_object;
     json_object_object_get_ex(header_object, "header", &header_name_object);
-    memcpy(header.header, word_decode1((char*) json_object_get_string(header_name_object), 30, "Shift-JIS", "UTF-8"), 30);
+    const char* json_header = json_object_get_string(header_name_object);
+    char *header_version = word_decode1((char*) json_header, 30, "Shift-JIS", "UTF-8");
+    memcpy(header.header, header_version, 30);
+    free(header_version);
     //最大フレームを読み込み
     struct json_object* max_frame_object;
     json_object_object_get_ex(output_data, "maxFrame", &max_frame_object);
@@ -148,8 +151,10 @@ void writeMotion(char* output_file_path, char* json){
     //モデル名の読み込み
     struct json_object* model_name_object;
     json_object_object_get_ex(header_object, "modelName", &model_name_object);
-    memcpy(header.modelName, word_decode1((char* )json_object_get_string(model_name_object), 30, "Shift-JIS", "UTF-8"), 20);
-
+    const char *json_model_name = json_object_get_string(model_name_object);
+    char *model_name = word_decode1((char*) json_model_name, 30, "Shift-JIS", "UTF-8");
+    memcpy(header.modelName, model_name, 20);
+    free(model_name);
 
     //ボーンフレームを取得---------------------------------------------------
     struct json_object* boneFrame_objects;
@@ -162,12 +167,14 @@ void writeMotion(char* output_file_path, char* json){
     //構造体に書き込み
     for (int i = 0; i < boneFrame_length; i++){
         struct json_object* boneFrame_object = json_object_array_get_idx(boneFrame_objects, i);
-        printf("%s\n", json_object_get_string(boneFrame_object));
 
         //ボーン名の読み込み
         struct json_object* boneFrame_name_object;
         json_object_object_get_ex(boneFrame_object, "boneName", &boneFrame_name_object);
-        memcpy(boneFrame[i].name, word_decode1((char* ) json_object_get_string(boneFrame_name_object), 30, "Shift-JIS", "UTF-8"), 15);
+        const char *json_bone_name = json_object_get_string(boneFrame_name_object);
+        char *bone_name = word_decode1((char* ) json_bone_name, 30, "Shift-JIS", "UTF-8");
+        memcpy(boneFrame[i].name, bone_name, 15);
+        free(bone_name);
 
         //ボーンフレームの読み込み
         struct json_object* boneFame_frame_object;
@@ -275,6 +282,7 @@ void writeMotion(char* output_file_path, char* json){
     fwrite(&max_frame, 1, sizeof(int), fpw);//最大フレームを書き込み
     fwrite(&boneFrame,1, sizeof(boneFrame), fpw);//ボーンフレーム
     fclose(fpw);
+    json_object_put(output_data);
 }
 
 int main(){
