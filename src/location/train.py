@@ -15,10 +15,10 @@ from sklearn.metrics import mean_squared_error
 bones = VMDConverter.getModel("../../YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx")
 datasets = "../../dataset/"
 
-hop_length = 1024 * 2
-max_sound_length = 7034640
-max_motion_frame = 8000
-look_back = 30
+hop_length = 735
+max_sound_length = 7938000
+max_motion_frame = 10800
+time_step = 100
 
 gpus = tensorflow.config.list_physical_devices('GPU')
 if gpus:
@@ -63,7 +63,7 @@ for path, vmd in vmds.items():
     # モーションの前処理
     print(path)
     for i in range(max_motion_frame):
-        motion_data.append(numpy.zeros((len(index), 7)))
+        motion_data.append(numpy.zeros((len(index), 3)))
 
     for bone in vmd["boneFrame"]:
         if bone["boneName"] not in index:
@@ -75,8 +75,7 @@ for path, vmd in vmds.items():
             break
         locations = bone["locations"]
         quaternions = bone["quaternions"]
-        location_array = numpy.array(
-            [locations[0], locations[1], locations[2], quaternions[0], quaternions[1], quaternions[2], quaternions[3]])
+        location_array = numpy.array([locations[0], locations[1], locations[2]])
         motion_array = numpy.insert(motion_array, index[bone["boneName"]], location_array, axis=0)
         motion_array = numpy.delete(motion_array, len(index), 0)
         motion_data[bone["frame"]] = motion_array
@@ -90,7 +89,7 @@ for path, vmd in vmds.items():
     y, sr = librosa.load(path + "/music.wav")
     shape_length = len(y)
     try:
-        zero_array = np.zeros(max_sound_length - shape_length)
+        zero_array = np.zeros(max_sound_length - shape_length-1)
     except ValueError:
         continue
     y = np.concatenate((y, zero_array))
@@ -99,51 +98,43 @@ for path, vmd in vmds.items():
     # dbに変換
     x_dB = librosa.power_to_db(x, ref=np.max)
     print(x_dB.shape)
+    x_dB = x_dB.reshape((time_step, -1))
+    print(x_dB.shape)
     Ydata.append(motion_data)
     Xdata.append(x_dB)
     print("--------------------------")
 
-Ydata = numpy.array(Ydata) / 100
-Xdata = numpy.array(Xdata) / 80
+Ydata = numpy.array(Ydata)
+Xdata = numpy.array(Xdata)
 
-train = Ydata[0:25]
-train1 = Xdata[0:25]
-test = Ydata[26:]
-test1 = Xdata[26:]
+train = Ydata[0:17]
+train1 = Xdata[0:17]
+test = Ydata[18:]
+test1 = Xdata[18:]
 
 model = models.Sequential()
-model.add(layers.Conv2D(64, kernel_size=(3, 3), input_shape=(128, 3435, 1)))
+model.add(layers.LSTM(units=256, return_sequences=True))
 model.add(layers.BatchNormalization())
 model.add(layers.LeakyReLU(alpha=0.01))
-model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-model.add(layers.Conv2D(128, kernel_size=(3, 3)))
+model.add(layers.LSTM(units=128, return_sequences=True))
 model.add(layers.BatchNormalization())
 model.add(layers.LeakyReLU(alpha=0.01))
-model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-model.add(layers.Conv2D(256, kernel_size=(3, 3)))
-model.add(layers.BatchNormalization())
+model.add(layers.Conv1D(2160, 3, padding='same'))
 model.add(layers.LeakyReLU(alpha=0.01))
-model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-model.add(layers.Reshape((256, -1)))
-model.add(layers.LSTM(256, return_sequences=True, kernel_initializer=keras.initializers.Zeros()))
-model.add(layers.LSTM(128, return_sequences=False))
-model.add(layers.BatchNormalization())
+model.add(layers.UpSampling1D(size=108))
+model.add(layers.Reshape((10800, -1)))
+model.add(layers.Conv1D(3 * 73, 3, padding='same'))
 model.add(layers.LeakyReLU(alpha=0.01))
-model.add(layers.Dense(8000))
-model.add(layers.Reshape((8000, -1)))
-model.add(layers.Dense(len(index)))
-model.add(layers.Reshape((8000, len(index), -1)))
-model.add(layers.Dense(7))
-model.add(layers.BatchNormalization())
-model.add(layers.Reshape((8000, len(index), 7)))
+model.add(layers.Reshape((10800, 73, 3)))
+
+
 # 合体
-model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.001), loss="MSE")
+model.compile(optimizer=keras.optimizers.Adam(learning_rate=0.01), loss="MSE")
 # model.summary()
 history = model.fit(
     train1, train,
     epochs=50,
-    batch_size=4,
-    shuffle=True,
+    batch_size=1,
     validation_data=(test1, test)
 )
 
@@ -158,8 +149,7 @@ plt.xlabel('Epoch')
 plt.grid()
 plt.legend(['Train', 'Validation'], loc='upper left')
 plt.savefig("plot.png", format="png")
-result = model.predict(train1[0][numpy.newaxis, :, :])[0] * 100
-
+result = model.predict(train1[0][numpy.newaxis, :, :])[0]*100
 
 write_motion = {
     "header": {
@@ -170,30 +160,39 @@ write_motion = {
 
 bone_frames = []
 
+max_frame = 600
+last_frame = 0
 i_count = 0
 for i in result:
     j_count = 0
+    if i_count > max_frame:
+        print("終了")
+        break
     for j in i:
         j_count += 1
-        if abs(j[0]) >= 1 or abs(j[1]) >= 1 or abs(j[2]) >= 1 or abs(j[3]) >= 1 or abs(j[4]) >= 1 or abs(
-                j[5]) >= 1 or abs(j[6]) >= 1:
+        if abs(j[0]) >= 1 or abs(j[1]) >= 1 or abs(j[2]) >= 1:
 
+            print(j)
             bone_name = ""
             for key, value in index.items():
                 if value == j_count:
                     bone_name = key
                     break
-            print(i_count, "フレーム目")
-            print(j)
             bone_frames.append({
                 "boneName": bone_name,
                 "frame": i_count,
-                "locations": [j[0], j[1], j[2]],
-                "quaternions": [j[3], j[4], j[5], j[6]],
-                "bezier": [[[20.0, 20.0, 20.0, 20.0], [20.0, 20.0, 20.0, 20.0]], [[107.0, 107.0, 107.0, 107.0], [107.0, 107.0, 107.0, 107.0]]]
+                "locations": [float(j[0]), float(j[1]), float(j[2])],
+                "quaternions": [0.0, 0.0, 0.0, 0.0],
+                "bezier": [[[20.0, 20.0, 20.0, 20.0], [20.0, 20.0, 20.0, 20.0]],
+                           [[107.0, 107.0, 107.0, 107.0], [107.0, 107.0, 107.0, 107.0]]]
             })
+            last_frame = i_count
+
     i_count += 1
 
-write_motion["maxFrame"] = i_count
 write_motion["boneFrame"] = bone_frames
+write_motion["maxFrame"] = last_frame
 
+print(write_motion)
+print("書き込み")
+VMDConverter.writeMotion("test.vmd", json.dumps(write_motion))
