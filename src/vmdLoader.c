@@ -165,7 +165,8 @@ void writeMotion(const char* output_file_path, const char* json){
     struct BoneFrame boneFrame[boneFrame_length];
 
     //構造体に書き込み
-    for (int i = 0; i < boneFrame_length; i++){
+    printf("最大数:%lu\n", boneFrame_length);
+    for (long i = 0; i < boneFrame_length; i++){
         struct json_object* boneFrame_object = json_object_array_get_idx(boneFrame_objects, i);
 
         //ボーン名の読み込み
