@@ -11,12 +11,20 @@ extern void writeMotion(const char*, MotionData);
 static PyObject* getMotion_wrapper(PyObject* self, PyObject* args)
 {
     const char* path = NULL;
-    bool frame_completion = false;
+    int frame_completion = 0;
 
-    if (! PyArg_ParseTuple(args, "s|p", &path, &frame_completion)){
+    if (! PyArg_ParseTuple(args, "s|i", &path, &frame_completion)){
         return NULL;
     }
-    MotionData motionData = getMotion(path, frame_completion);
+    MotionData motionData;
+    switch (frame_completion) {
+        case 0:
+            motionData = getMotion(path, false);
+            break;
+        case 1:
+            motionData = getMotion(path, true);
+            break;
+    }
 
     PyObject* vmd = PyDict_New();
 
