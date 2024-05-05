@@ -1,10 +1,10 @@
 #include <python3.11/Python.h>
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
-#include "vmdStruct.c"
+#include "vmdStruct.h"
 #include <stdbool.h>
 
 extern MotionData getMotion(const char*, bool);
-extern char* getModel(const char*);
+extern void getModel(const char *, struct Model*);
 extern void writeMotion(const char*, MotionData);
 
 //モーションをjsonで吐き出すやつ
@@ -110,9 +110,19 @@ static PyObject* getModel_wrapper(PyObject* self, PyObject* args)
     if (! PyArg_ParseTuple(args, "|s", &path)){
         return NULL;
     }
+    #include "pmx/pmxStruct.h"
+    PyObject* model_data = PyList_New(0);
+    struct Model model;
+    getModel(path, &model);
+    printf("encode mode %d\n", model.header.encode[0]);
+    for(int i = 0; i < model.bone_size; i++){
+        PyObject* bytes = PyBytes_FromStringAndSize(model.bone[i].model_name_jp.byte, model.bone[i].model_name_jp.byte_size);
+        PyList_Append(model_data, bytes);
+        //printf("char: %s| byte: %d\n", model.bone[i].model_name_jp.byte, model.bone[i].model_name_jp.byte_size);
+        Py_DECREF(bytes);
+    }
 
-    char* motion_json = getModel(path);
-    return Py_BuildValue("s", motion_json);
+    return model_data;
 }
 
 //モーションをjsonからVMDに書き込むやつ

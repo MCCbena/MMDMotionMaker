@@ -5,7 +5,6 @@
 
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
 
-/*
 char* word_decode(char* string, int length, char* toCode, char* fromCode){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
     char inbuf[MAX_BUF + 1] = {0};
     char outbuf[MAX_BUF + 1] = {0};
@@ -23,7 +22,6 @@ char* word_decode(char* string, int length, char* toCode, char* fromCode){ //エ
     return strdup(outbuf);
 }
 
-*/
 
 
 struct Index{

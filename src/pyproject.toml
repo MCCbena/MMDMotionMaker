@@ -7,3 +7,8 @@ name = "VMDConverter"
 version = "0.1.2"
 
 [toolsetuptools]
+[tool.setuptools.packages.find]
+where = [".", "vmd", "pmx"]  # list of folders that contain the packages (["."] by default)
+include = ['vmd/indexlib.c', "pmx/pmxStruct.h", "vmd/vmdStruct.h"]  # package names should match these glob patterns (["*"] by default)
+exclude = []  # exclude packages matching these glob patterns (empty by default)
+namespaces = false  # to disable scanning PEP 420 namespaces (true by default)

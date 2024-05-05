@@ -1,7 +1,7 @@
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
 
 #include <stdio.h>
-#include "vmdStruct.c"
+#include "vmdStruct.h"
 #include <stdbool.h>
 #include "indexlib.c"
 #include <math.h>
