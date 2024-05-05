@@ -229,11 +229,8 @@ void writeMotion(const char* output_file_path, MotionData motionData){
 }
 
 int main(){
-    MotionData motionData = getMotion("/home/shuta/ダウンロード/天使の翼モーション/ôVÄgé╠ùââéü[âVâçâô/ôVÄgé╠ùâ.vmd", true);
+    MotionData motionData = getMotion("/home/shuta/IdeaProjects/MMDMotionMaker/dataset/sm18737664/motion.vmd", true);
     printf("%d\n",motionData.maxFrame.maxFrame);
-    motionData.boneFrame[570818];
-    writeMotion("/home/shuta/ダウンロード/天使の翼モーション/天使の翼_test2.vmd", motionData);
-    free(motionData.boneFrame);
 
     return 0;
 }
