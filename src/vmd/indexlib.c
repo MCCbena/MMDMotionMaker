@@ -45,6 +45,6 @@ int getIndex(struct Index index, char *from){
 }
 
 void addIndex(struct Index *index, char name[15]){
-    strlcpy(index->name[index->assigned], name, 16);
+    memcpy(index->name[index->assigned], name, 16);
     index->assigned++;
 }

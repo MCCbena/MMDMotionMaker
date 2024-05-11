@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 extern MotionData getMotion(const char*, bool);
-extern void getModel(const char *, struct Model*);
+extern void getModel(const char *, struct Model *);
 extern void writeMotion(const char*, MotionData);
 
 //モーションをjsonで吐き出すやつ

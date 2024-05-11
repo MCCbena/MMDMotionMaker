@@ -7,7 +7,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-#define rad_to_deg(rad) ((rad)*180/M_PI)
 #define deg_to_rad(deg) ((deg)*M_PI/180)
 
 float getPos(const float pos1, const float pos2, float time){
@@ -131,7 +130,7 @@ MotionData getMotion(const char* path, bool frame_completion){
                         float time_count_base = (1/(float)(1+(end-start)));
                         struct BoneFrame final_registration_boneFrame = boneFrame[i][start-1];
                         for(int k = start; k < end; k++){
-                            strlcpy(boneFrame[i][k].name, index.name[i], 15);//名前の設定
+                            memcpy(boneFrame[i][k].name, index.name[i], 15);//名前の設定
                             boneFrame[i][k].frame = k;//フレームの設定
                             //printf("---開始:%f-----終了:%f\n", final_registration_boneFrame.qy, boneFrame[i][end].qy);
 

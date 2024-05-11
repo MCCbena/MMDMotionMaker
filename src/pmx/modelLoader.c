@@ -1,12 +1,8 @@
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
 
 #include <stdio.h>
-#include <iconv.h>
-#include <string.h>
 #include <malloc.h>
 #include "pmxStruct.h"
-
-#define MAX_BUF 1024
 
 void getModel(const char* path, struct Model *model){
     
