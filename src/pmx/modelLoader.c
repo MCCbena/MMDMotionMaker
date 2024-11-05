@@ -77,6 +77,10 @@ void getModel(const char* path, struct Model *model){
         struct Bone bone;
         getBone(header, &bone, fpw);
         model->bone[i] = bone;
+        //親ボーンに子ボーンを登録
+        if(bone.parent_bone_index != -1){
+            model->bone[bone.parent_bone_index].child_bones[model->bone[bone.parent_bone_index].child_bone_size++] = i;
+        }
     }
 
 }

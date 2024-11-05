@@ -1,1 +1,0 @@
-CMakeLists.txt が /home/shuta/IdeaProjects/MMDMotionMaker に見つかりません CMakeLists.txt の選択

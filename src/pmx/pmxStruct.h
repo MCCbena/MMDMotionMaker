@@ -1,7 +1,6 @@
 #ifndef pmxStruct_H
 #define pmxStruct_H
 
-
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
 #include <stdio.h>
 
@@ -17,16 +16,16 @@ struct Header_pmx {
     float version; //PMXのバージョン
 
     //バイト列
-    char byte_size[1]; //後続するデータのバイトサイズ（PMX2.0は8で固定）
-    char encode[1]; //エンコード方式（0:UTF16 | 1:UTF8）
-    unsigned char additional_UV_size[1]; //追加UV数（0〜4）
+    char byte_size; //後続するデータのバイトサイズ（PMX2.0は8で固定）
+    char encode; //エンコード方式（0:UTF16 | 1:UTF8）
+    unsigned char additional_UV_size; //追加UV数（0〜4）
 
-    char top_index_size[1]; //頂点indexサイズ（1,2,4のどれか）
-    char texture_index_size[1]; //テクスチャindexサイズ（1,2,4のどれか）
-    char material_index_size[1]; //素材indexサイズ（以下略
-    char bone_index_size[1]; //ボーン（以下略
-    char morph_index_size[1]; //モーフ
-    char rigidBody_index_size[1]; //剛体
+    char top_index_size; //頂点indexサイズ（1,2,4のどれか）
+    char texture_index_size; //テクスチャindexサイズ（1,2,4のどれか）
+    char material_index_size; //素材indexサイズ（以下略
+    char bone_index_size; //ボーン（以下略
+    char morph_index_size; //モーフ
+    char rigidBody_index_size; //剛体
 };
 
 struct ModelInfo {
@@ -105,7 +104,7 @@ void getTopData(FILE *fpw, struct TopData *topData, struct Header_pmx header){
     fread(&topData->uv, sizeof(float) * 2, 1, fpw);
     //追加UVを設定
 
-    int n = header.additional_UV_size[0];
+    int n = header.additional_UV_size;
     for (int i = 0; i<n;i++) {
         float additional_uv[4];
         fread(&additional_uv, sizeof(additional_uv), 1, fpw);
@@ -212,16 +211,16 @@ void getMaterialData(struct Header_pmx header, struct Material *material, FILE *
     fread(&material->edge_color, sizeof(float)*4, 1, fpw);
     fread(&material->edge_size, sizeof(float), 1, fpw);
     //通常テクスチャ
-    fread(&material->normal_texture_index, header.texture_index_size[0], 1, fpw);
+    fread(&material->normal_texture_index, header.texture_index_size, 1, fpw);
     //スフィアテクスチャ
-    fread(&material->sphere_texture_index, header.texture_index_size[0], 1, fpw);
+    fread(&material->sphere_texture_index, header.texture_index_size, 1, fpw);
     //スフィアモード
     fread(&material->sphere_mode, sizeof(char),1 , fpw);
     //共有Toonフラグ
     fread(&material->share_toon_flag, sizeof(char), 1, fpw);
     switch (material->share_toon_flag) {
         case 0: //個別Toon
-            fread(&material->toon, header.texture_index_size[0], 1, fpw);
+            fread(&material->toon, header.texture_index_size, 1, fpw);
             break;
         case 1: //共有Toon
             fread(&material->toon, sizeof(char), 1, fpw);
@@ -282,7 +281,7 @@ struct Bone{
 
     float locations[3]; //位置
 
-    char *parent_bone_index; //親ボーンのボーンIndex
+    short parent_bone_index; //親ボーンのボーンIndex
     int transformation_hierarchy; //変形階層
 
     short bone_flags;
@@ -295,9 +294,16 @@ struct Bone{
     LocalShaft localShaft;
     Deformation deformation;
     IK ik;
+
+    int child_bone_size; //子ボーンのインデックスサイズ
+    int *child_bones; //チェイン法により、子ボーンのインデックスが代入される
 };
 
 void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
+    //初期化
+    bone->child_bone_size=0;
+    bone->child_bones = malloc(sizeof(int)*32);//32は子ボーンの最大値
+    for(int i = 0; i < 1024; i++) bone->model_name_jp.byte[i]=0;
     //ボーン名の書き込み
     fread(&bone->model_name_jp.byte_size, sizeof(int), 1, fpw);
     fread(&bone->model_name_jp.byte, bone->model_name_jp.byte_size, 1, fpw);
@@ -307,7 +313,7 @@ void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
     //位置の書き込み
     fread(&bone->locations, sizeof(float)*3, 1, fpw);
     //親ボーンのボーンindex
-    fread(&bone->parent_bone_index, header.bone_index_size[0], 1, fpw);
+    fread(&bone->parent_bone_index, header.bone_index_size, 1, fpw);
     //変形階層の書き込み
     fread(&bone->transformation_hierarchy, sizeof(int), 1, fpw);
     //ボーンフラグの書き込み
@@ -317,10 +323,10 @@ void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
         fread(&bone->connect0, sizeof(Connect0), 1, fpw);
     }
     if ((bone->bone_flags & 0x0001) == 1){ //接続1の場合
-        fread(&bone->connect1, header.bone_index_size[0], 1, fpw);
+        fread(&bone->connect1, header.bone_index_size, 1, fpw);
     }
     if ((bone->bone_flags & 0x0100) != 0 || (bone->bone_flags & 0x0200) != 0){ //回転付与 or 移動付与が1の場合
-        fread(&bone->imparted.parent_bone_index, header.bone_index_size[0], 1, fpw);
+        fread(&bone->imparted.parent_bone_index, header.bone_index_size, 1, fpw);
         fread(&bone->imparted.grant_rate, sizeof(float), 1, fpw);
     }
     if ((bone->bone_flags & 0x0400) != 0){ //軸固定が1の場合
@@ -333,14 +339,14 @@ void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
         fread(&bone->deformation, sizeof(Deformation), 1, fpw);
     }
     if ((bone->bone_flags & 0x0020) != 0){ //IKが1の場合
-        fread(&bone->ik.IK_targetBone_index_size, header.bone_index_size[0], 1, fpw);
+        fread(&bone->ik.IK_targetBone_index_size, header.bone_index_size, 1, fpw);
         fread(&bone->ik.IK_loop_count, sizeof(int), 1, fpw);
         fread(&bone->ik.IK_limit_angle, sizeof(float), 1, fpw);
 
         fread(&bone->ik.IK_link_count, sizeof(int), 1, fpw);
         for(int i = 0; i < bone->ik.IK_link_count; i++){
             IKLink ikLink;
-            fread(&ikLink.linkBone_index_size, header.bone_index_size[0], 1, fpw);
+            fread(&ikLink.linkBone_index_size, header.bone_index_size, 1, fpw);
             fread(&ikLink.limit_angele, sizeof(char), 1, fpw);
             if(ikLink.limit_angele == 1){
                 fread(&ikLink.lower_limit, sizeof(float)*3, 1, fpw);

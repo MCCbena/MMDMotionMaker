@@ -3,9 +3,10 @@
 #include <stdio.h>
 #include "vmdStruct.h"
 #include <stdbool.h>
-#include "indexlib.c"
+#include "indexlib.h"
 #include <math.h>
 #include <stdlib.h>
+#include "../pmx/modelLoader.c"
 
 #define deg_to_rad(deg) ((deg)*M_PI/180)
 
@@ -93,8 +94,8 @@ MotionData getMotion(const char* path, bool frame_completion){
                 max_frame = motionData.boneFrame[i].frame;
             }
             //インデックス
-            if (getIndex(index, motionData.boneFrame[i].name) == -1){
-                addIndex(&index, motionData.boneFrame[i].name);
+            if (getnIndex(index, motionData.boneFrame[i].name, 15) == -1){
+                addIndex(&index, motionData.boneFrame[i].name, 15);
             }
         }
         max_frame++;
@@ -107,7 +108,7 @@ MotionData getMotion(const char* path, bool frame_completion){
         }
         for(int i = 0; i < motionData.maxFrame.maxFrame; i++){
             struct BoneFrame temp = motionData.boneFrame[i];
-            int id = getIndex(index, temp.name);
+            int id = getnIndex(index, temp.name, 15);
             boneFrame[id][temp.frame] = temp;
         }
 
@@ -119,7 +120,7 @@ MotionData getMotion(const char* path, bool frame_completion){
             float pos1, pos2;
             for(int j = 0; j < max_frame; j++){//最大フレーム回ループ
 
-                if (boneFrame[i][j].name[0] == 0 || j == max_frame){//フレームが未登録だった場合
+                if (boneFrame[i][j].name[0] == 0 && j != max_frame-1){//フレームが未登録だった場合
                     if(start == 0){
                         start = j;//未登録フレームの開始地点
                     }
@@ -185,7 +186,6 @@ MotionData getMotion(const char* path, bool frame_completion){
                             boneFrame[i][k].qy = quaternion.y;
                             boneFrame[i][k].qz = quaternion.z;
                             //printf("%f\n", quaternion.y);
-
                         }
                     }
                     start = 0;
@@ -218,6 +218,102 @@ MotionData getMotion(const char* path, bool frame_completion){
     return motionData;
 }
 
+void jointCalculation(struct Model model, MotionData *motionData, struct BoneFrame *parent_boneFrame, struct Bone model_parent_bone, struct Index model_index, struct Index motion_index){
+
+    printf("親ボーン:%s, ", word_decode(parent_boneFrame->name, 15, "UTF-8", "SHIFT-JIS"));
+    //クォータニオンからオイラー角を算出。回転順序はYXZで、オイラー角のYとZに-1をかける必要がある。
+    float qx, qy, qz, qw;
+    qx = parent_boneFrame->qx;
+    qy = parent_boneFrame->qy;
+    qz = parent_boneFrame->qz;
+    qw = parent_boneFrame->qw;
+
+    float ox, oy, oz;
+    ox = asinf(-(2*qy*qz-2*qx*qw));
+    oy = -atanf((2*qx*qz+2*qy*qw)/(2*powf(qw, 2)+2*powf(qz, 2)-1));
+    if(cosf(ox)==0.0f){
+        oy *= -1;
+        oz = 0;
+    } else oz = -atanf((2*qx*qy+2*qz*qw)/(2* powf(qw, 2)+2+powf(qy, 2)-1));
+
+    for (int child_bone_i = 0; child_bone_i < model_parent_bone.child_bone_size; child_bone_i++) {
+        int child_bone_index = model_parent_bone.child_bones[child_bone_i];
+        printf("子ボーン計算:%s\n", word_decode(model.bone[child_bone_index].model_name_jp.byte, 15, "UTF-8", "UTF-16"));
+        //子ボーンを正とした相対座標(Relative Coordinates)を計算
+        float rx = model.bone[child_bone_index].locations[0] - model_parent_bone.locations[0];
+        float ry = model.bone[child_bone_index].locations[1] - model_parent_bone.locations[1];
+        float rz = model.bone[child_bone_index].locations[2] - model_parent_bone.locations[2];
+
+        //回転後の座標を計算
+        float cx = 0;
+        float cy = 0;
+        float cz = 0;
+        //z方向の回転を計算
+        cx+=rx*cosf(oz);
+        cy+=ry*sinf(oz);
+        //y方向の回転を計算
+        cx+=rx*sinf(oy);
+        cz+=rz*cosf(oy);
+        //x方向の回転を計算
+        cy+=ry*cosf(ox);
+        cz+=rz*sinf(ox);
+
+        for(int child2_bone_i = 0; child2_bone_i < model.bone[child_bone_index].child_bone_size; child2_bone_i++){
+            int index = getIndex(model_index, model.bone[model.bone[child_bone_index].child_bones[child2_bone_i]].model_name_jp.byte);
+            if(index==-1)
+                return;
+            for(int frame_i = 0; frame_i < motionData->maxFrame.maxFrame; frame_i++){
+                struct BoneFrame tmp_frame = motionData->boneFrame[frame_i];
+                if(strncmp(motion_index.name[index], tmp_frame.name, 15) == 0 && tmp_frame.frame == parent_boneFrame->frame){
+                    jointCalculation(model, motionData, &tmp_frame, model.bone[child_bone_index], model_index, motion_index);
+                }
+            }
+        }
+    }
+}
+/*
+ * この関数を使用することで、関節の角度によるボーンの移動距離をモデルをベースに算出し、移動座標に付加できる。
+ * また、必ずgetMotionのフレームを補完を行ってから実行すること。
+*/
+void modelPhysics(struct Model model, MotionData *motionData){
+    char* encode_codec = "UTF-16";
+    if(model.header.encode==1) encode_codec = "UTF-8";
+
+    struct Index model_name_index = makeIndex();
+    struct Index motion_bone_name_index = makeIndex();
+
+    for(int i0 = 0; i0 < model.bone_size; i0++){
+        char* model_born_name = word_decode(model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size, "UTF-8", encode_codec);
+        for(int i1 = 0; i1 < motionData->maxFrame.maxFrame; i1++){
+            char* motion_born_name = word_decode(motionData->boneFrame[i1].name, 15, "UTF-8", "SHIFT-JIS");
+            if(strncmp(model_born_name, motion_born_name, 15) == 0){
+                addIndex(&model_name_index, model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size);
+                addIndex(&motion_bone_name_index, motionData->boneFrame[i1].name, 15);
+                printf("%s\n", model_born_name);
+                break;
+            }
+        }
+    }
+    for(int i = 0; i < motionData->maxFrame.maxFrame; i++){
+        struct BoneFrame parent_boneFrame = motionData->boneFrame[i];
+
+        //モーションのボーンと対応するモデルのボーンを取得
+        int index = getnIndex(motion_bone_name_index, parent_boneFrame.name, 15);
+        struct Bone model_parent_bone;
+        for(int bone_i = 0; bone_i < model.bone_size+1; bone_i++){
+            if(strcmp(model.bone[bone_i].model_name_jp.byte, model_name_index.name[index]) == 0){
+                model_parent_bone=model.bone[bone_i];
+                break;
+            }
+        }
+
+        //子ボーンの座標を計算
+        if(model_parent_bone.child_bone_size != 0) {
+            jointCalculation(model, motionData, &parent_boneFrame, model_parent_bone, model_name_index, motion_bone_name_index);
+        }
+    }
+}
+
 void writeMotion(const char* output_file_path, MotionData motionData){
     //ファイルに書き込み------------------------------------------
     FILE *fpw = fopen(output_file_path, "w");
@@ -227,9 +323,16 @@ void writeMotion(const char* output_file_path, MotionData motionData){
     fclose(fpw);
 }
 
+
+
 int main(){
-    MotionData motionData = getMotion("/home/shuta/IdeaProjects/MMDMotionMaker/dataset/sm18737664/motion.vmd", true);
+    MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", false);
     printf("%d\n",motionData.maxFrame.maxFrame);
+    printf("%s\n", word_decode(motionData.boneFrame[20000].name, 15, "UTF-8", "SHIFT-JIS"));
+
+    struct Model model;
+    getModel("/home/shuta/MikuMikuDance_v932x64/models/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx", &model);
+    modelPhysics(model, &motionData);
 
     return 0;
 }
