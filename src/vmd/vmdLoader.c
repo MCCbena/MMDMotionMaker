@@ -218,7 +218,7 @@ MotionData getMotion(const char* path, bool frame_completion){
     return motionData;
 }
 
-void jointCalculation(struct Model model, MotionData *motionData, struct BoneFrame *parent_boneFrame, struct Bone model_parent_bone, struct Index model_index, struct Index motion_index){
+void jointCalculation(struct Model model, MotionData *motionData, struct BoneFrame *parent_boneFrame, struct Bone model_parent_bone, struct Index *model_index, struct Index *motion_index){
 
     printf("親ボーン:%s, ", word_decode(parent_boneFrame->name, 15, "UTF-8", "SHIFT-JIS"));
     //クォータニオンからオイラー角を算出。回転順序はYXZで、オイラー角のYとZに-1をかける必要がある。
@@ -237,8 +237,25 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
     } else oz = -atanf((2*qx*qy+2*qz*qw)/(2* powf(qw, 2)+2+powf(qy, 2)-1));
 
     for (int child_bone_i = 0; child_bone_i < model_parent_bone.child_bone_size; child_bone_i++) {
-        int child_bone_index = model_parent_bone.child_bones[child_bone_i];
-        printf("子ボーン計算:%s\n", word_decode(model.bone[child_bone_index].model_name_jp.byte, 15, "UTF-8", "UTF-16"));
+        int child_bone_index = model_parent_bone.child_bones[child_bone_i];//pmxのインデックス
+        int child_bone_index_db = getIndex(*model_index, model.bone[child_bone_index].model_name_jp.byte);//indexライブラリのインデックス
+        if(child_bone_index_db==-1) {
+            printf("未インデックスボーン %s\n", word_decode(model.bone[child_bone_index].model_name_jp.byte, model.bone[child_bone_index].model_name_jp.byte_size, "UTF-8", "UTF-16"));
+            continue;//-1があればindexライブラリがインデックスしていないボーンとなる。つまり、pmx内に存在しないボーン
+        }
+        struct BoneFrame child_bone_frame;
+        char Assignment = 0;
+        //モデルボーンとモーションデータのボーンを紐付け
+        for(int child_bone_frame_i = 0; child_bone_frame_i < motionData->maxFrame.maxFrame; child_bone_frame_i++) {
+            struct BoneFrame tmp = motionData->boneFrame[child_bone_frame_i];
+            if(strncmp(tmp.name, motion_index->name[child_bone_index_db], 15) == 0 && parent_boneFrame->frame == tmp.frame){
+                child_bone_frame = tmp;
+                Assignment=1;
+                break;
+            }
+        }
+
+        printf("子ボーン計算:%d, %s\n", child_bone_index, word_decode(model.bone[child_bone_index].model_name_jp.byte, 15, "UTF-8", "UTF-16"));
         //子ボーンを正とした相対座標(Relative Coordinates)を計算
         float rx = model.bone[child_bone_index].locations[0] - model_parent_bone.locations[0];
         float ry = model.bone[child_bone_index].locations[1] - model_parent_bone.locations[1];
@@ -259,15 +276,11 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
         cz+=rz*sinf(ox);
 
         for(int child2_bone_i = 0; child2_bone_i < model.bone[child_bone_index].child_bone_size; child2_bone_i++){
-            int index = getIndex(model_index, model.bone[model.bone[child_bone_index].child_bones[child2_bone_i]].model_name_jp.byte);
+            int index = getIndex(*model_index, model.bone[model.bone[child_bone_index].child_bones[child2_bone_i]].model_name_jp.byte);
+            //int index = getIndex(model_index, model.bone[child_bone_index].model_name_jp.byte);
             if(index==-1)
                 return;
-            for(int frame_i = 0; frame_i < motionData->maxFrame.maxFrame; frame_i++){
-                struct BoneFrame tmp_frame = motionData->boneFrame[frame_i];
-                if(strncmp(motion_index.name[index], tmp_frame.name, 15) == 0 && tmp_frame.frame == parent_boneFrame->frame){
-                    jointCalculation(model, motionData, &tmp_frame, model.bone[child_bone_index], model_index, motion_index);
-                }
-            }
+            jointCalculation(model, motionData, &child_bone_frame, model.bone[child_bone_index], model_index, motion_index);
         }
     }
 }
@@ -282,16 +295,23 @@ void modelPhysics(struct Model model, MotionData *motionData){
     struct Index model_name_index = makeIndex();
     struct Index motion_bone_name_index = makeIndex();
 
+    //インデックスを作成
     for(int i0 = 0; i0 < model.bone_size; i0++){
         char* model_born_name = word_decode(model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size, "UTF-8", encode_codec);
+        char assigned = 0;
+
+        addIndex(&model_name_index, model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size);
         for(int i1 = 0; i1 < motionData->maxFrame.maxFrame; i1++){
             char* motion_born_name = word_decode(motionData->boneFrame[i1].name, 15, "UTF-8", "SHIFT-JIS");
             if(strncmp(model_born_name, motion_born_name, 15) == 0){
-                addIndex(&model_name_index, model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size);
                 addIndex(&motion_bone_name_index, motionData->boneFrame[i1].name, 15);
+                assigned = 1;
                 printf("%s\n", model_born_name);
                 break;
             }
+        }
+        if(!assigned){//モーションデータにボーンが存在しなければ、モデルデータから取得した情報をもとに、モーションデータに新規格納
+            //addIndex(&motion_bone_name_index, word_decode(model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size, "SHIFT-JIS", encode_codec), model.bone[i0].model_name_jp.byte_size);
         }
     }
     for(int i = 0; i < motionData->maxFrame.maxFrame; i++){
@@ -309,7 +329,7 @@ void modelPhysics(struct Model model, MotionData *motionData){
 
         //子ボーンの座標を計算
         if(model_parent_bone.child_bone_size != 0) {
-            jointCalculation(model, motionData, &parent_boneFrame, model_parent_bone, model_name_index, motion_bone_name_index);
+            jointCalculation(model, motionData, &parent_boneFrame, model_parent_bone, &model_name_index, &motion_bone_name_index);
         }
     }
 }
