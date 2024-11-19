@@ -10,6 +10,9 @@
 
 #define deg_to_rad(deg) ((deg)*M_PI/180)
 
+const char bezier[64] = {20, 20, 0, 0, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 20, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 0};
+unsigned long ex_counter = 0;
+
 float getPos(const float pos1, const float pos2, float time){
     return (3* powf(1.0f-time, 2)*time*pos1+3.0f* (1-time)* powf(time, 2)*pos2+ powf(time, 3));
 }
@@ -198,7 +201,6 @@ MotionData getMotion(const char* path, bool frame_completion){
 
         for(int i = 0; i < index.assigned; i++){
             for(int j = 0; j < max_frame; j++){
-                char bezier[64] = {20, 20, 0, 0, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 20, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 0};
                 memcpy(boneFrame[i][j].bezier, bezier, 64);//ベジェのコピー
 
                 synthesis_boneFrame[n] = boneFrame[i][j];
@@ -220,7 +222,7 @@ MotionData getMotion(const char* path, bool frame_completion){
 
 void jointCalculation(struct Model model, MotionData *motionData, struct BoneFrame *parent_boneFrame, struct Bone model_parent_bone, struct Index *model_index, struct Index *motion_index){
 
-    printf("親ボーン:%s, ", word_decode(parent_boneFrame->name, 15, "UTF-8", "SHIFT-JIS"));
+    //printf("親ボーン:%s, ", word_decode(parent_boneFrame->name, 15, "UTF-8", "SHIFT-JIS"));
     //クォータニオンからオイラー角を算出。回転順序はYXZで、オイラー角のYとZに-1をかける必要がある。
     float qx, qy, qz, qw;
     qx = parent_boneFrame->qx;
@@ -239,23 +241,35 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
     for (int child_bone_i = 0; child_bone_i < model_parent_bone.child_bone_size; child_bone_i++) {
         int child_bone_index = model_parent_bone.child_bones[child_bone_i];//pmxのインデックス
         int child_bone_index_db = getIndex(*model_index, model.bone[child_bone_index].model_name_jp.byte);//indexライブラリのインデックス
-        if(child_bone_index_db==-1) {
-            printf("未インデックスボーン %s\n", word_decode(model.bone[child_bone_index].model_name_jp.byte, model.bone[child_bone_index].model_name_jp.byte_size, "UTF-8", "UTF-16"));
-            continue;//-1があればindexライブラリがインデックスしていないボーンとなる。つまり、pmx内に存在しないボーン
-        }
         struct BoneFrame child_bone_frame;
-        char Assignment = 0;
-        //モデルボーンとモーションデータのボーンを紐付け
+        char assignment = 0; //0であれば、子がフレーム上に存在しない。（子ボーンのモーションデータが存在しない）
+        //親と同じフレームの子のボーンを特定
         for(int child_bone_frame_i = 0; child_bone_frame_i < motionData->maxFrame.maxFrame; child_bone_frame_i++) {
             struct BoneFrame tmp = motionData->boneFrame[child_bone_frame_i];
             if(strncmp(tmp.name, motion_index->name[child_bone_index_db], 15) == 0 && parent_boneFrame->frame == tmp.frame){
                 child_bone_frame = tmp;
-                Assignment=1;
+                assignment=1;
                 break;
             }
         }
+        //子ボーンを新規作成
+        if(!assignment){
+            //ボーン名前を代入
+            memcpy(child_bone_frame.name, motion_index->name[child_bone_index_db], 15);
+            //フレームを代入
+            child_bone_frame.frame = parent_boneFrame->frame;
 
-        printf("子ボーン計算:%d, %s\n", child_bone_index, word_decode(model.bone[child_bone_index].model_name_jp.byte, 15, "UTF-8", "UTF-16"));
+            //x,y,zとqx,qy,qzを0に、qwを1に初期化
+            float *locations = (float*)&child_bone_frame.x; //#pragma pack(1)でメモリが詰められているため有効に動作する。
+            for(int i = 0; i < 7; i++){
+                locations[i] = (i==6) ? 1.0f : 0.0f;
+            }
+
+            //ベジェ曲線をデフォルトに指定
+            memcpy(child_bone_frame.bezier, bezier, 64);
+        }
+
+        //printf("子ボーン計算:%d, %s\n", child_bone_index, word_decode(model.bone[child_bone_index].model_name_jp.byte, 15, "UTF-8", "UTF-16"));
         //子ボーンを正とした相対座標(Relative Coordinates)を計算
         float rx = model.bone[child_bone_index].locations[0] - model_parent_bone.locations[0];
         float ry = model.bone[child_bone_index].locations[1] - model_parent_bone.locations[1];
@@ -275,6 +289,8 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
         cy+=ry*cosf(ox);
         cz+=rz*sinf(ox);
 
+        ex_counter++;
+
         for(int child2_bone_i = 0; child2_bone_i < model.bone[child_bone_index].child_bone_size; child2_bone_i++){
             int index = getIndex(*model_index, model.bone[model.bone[child_bone_index].child_bones[child2_bone_i]].model_name_jp.byte);
             //int index = getIndex(model_index, model.bone[child_bone_index].model_name_jp.byte);
@@ -283,6 +299,7 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
             jointCalculation(model, motionData, &child_bone_frame, model.bone[child_bone_index], model_index, motion_index);
         }
     }
+    //printf("--rollback--\n");
 }
 /*
  * この関数を使用することで、関節の角度によるボーンの移動距離をモデルをベースに算出し、移動座標に付加できる。
@@ -311,7 +328,7 @@ void modelPhysics(struct Model model, MotionData *motionData){
             }
         }
         if(!assigned){//モーションデータにボーンが存在しなければ、モデルデータから取得した情報をもとに、モーションデータに新規格納
-            //addIndex(&motion_bone_name_index, word_decode(model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size, "SHIFT-JIS", encode_codec), model.bone[i0].model_name_jp.byte_size);
+            addIndex(&motion_bone_name_index, word_decode(model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size, "SHIFT-JIS", encode_codec), model.bone[i0].model_name_jp.byte_size);
         }
     }
     for(int i = 0; i < motionData->maxFrame.maxFrame; i++){
@@ -330,6 +347,8 @@ void modelPhysics(struct Model model, MotionData *motionData){
         //子ボーンの座標を計算
         if(model_parent_bone.child_bone_size != 0) {
             jointCalculation(model, motionData, &parent_boneFrame, model_parent_bone, &model_name_index, &motion_bone_name_index);
+            printf("フレーム:%d/%d(%ld回計算)\n", i, motionData->maxFrame.maxFrame, ex_counter);
+            ex_counter=0;
         }
     }
 }
