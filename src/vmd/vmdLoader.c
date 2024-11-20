@@ -226,17 +226,23 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
     //クォータニオンからオイラー角を算出。回転順序はYXZで、オイラー角のYとZに-1をかける必要がある。
     float qx, qy, qz, qw;
     qx = parent_boneFrame->qx;
-    qy = parent_boneFrame->qy;
-    qz = parent_boneFrame->qz;
+    qy = parent_boneFrame->qy*-1;
+    qz = parent_boneFrame->qz*-1;
     qw = parent_boneFrame->qw;
 
+    if(qw > 0.98)return;
+
     float ox, oy, oz;
-    ox = asinf(-(2*qy*qz-2*qx*qw));
-    oy = -atanf((2*qx*qz+2*qy*qw)/(2*powf(qw, 2)+2*powf(qz, 2)-1));
+    ox = asinf(-(2*qy*qz-2*qx*qw))*180/M_PI;
     if(cosf(ox)==0.0f){
-        oy *= -1;
+        oy = atanf(-(2*qx*qz+2*qy*qw)/(2*qw*qw+2*qx*qx-1))*180/M_PI;
         oz = 0;
-    } else oz = -atanf((2*qx*qy+2*qz*qw)/(2* powf(qw, 2)+2+powf(qy, 2)-1));
+    } else{
+        oz = atanf((2*qx*qy+2*qz*qw)/(2*qw*qw+2*qy*qy-1))*180/M_PI;
+        oy = atanf((2*qx*qz+2*qy*qw)/(2*qw*qw+2*qz*qz-1))*180/M_PI;
+    }
+    qy*=-1;
+    qz*=-1;
 
     for (int child_bone_i = 0; child_bone_i < model_parent_bone.child_bone_size; child_bone_i++) {
         int child_bone_index = model_parent_bone.child_bones[child_bone_i];//pmxのインデックス
@@ -367,7 +373,7 @@ void writeMotion(const char* output_file_path, MotionData motionData){
 int main(){
     MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", false);
     printf("%d\n",motionData.maxFrame.maxFrame);
-    printf("%s\n", word_decode(motionData.boneFrame[20000].name, 15, "UTF-8", "SHIFT-JIS"));
+    printf("%s\n", word_decode(motionData.boneFrame[10000].name, 15, "UTF-8", "SHIFT-JIS"));
 
     struct Model model;
     getModel("/home/shuta/MikuMikuDance_v932x64/models/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx", &model);
