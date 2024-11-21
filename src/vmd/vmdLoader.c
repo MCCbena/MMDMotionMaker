@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include "../pmx/modelLoader.c"
+#include <pthread.h>
 
 #define deg_to_rad(deg) ((deg)*M_PI/180)
 
@@ -220,7 +221,25 @@ MotionData getMotion(const char* path, bool frame_completion){
     return motionData;
 }
 
-void jointCalculation(struct Model model, MotionData *motionData, struct BoneFrame *parent_boneFrame, struct Bone model_parent_bone, struct Index *model_index, struct Index *motion_index){
+struct JCArgs{
+    struct Model model;
+    MotionData *motionData;
+    struct BoneFrame* parent_boneFrame;
+    struct Bone model_parent_bone;
+    struct Index *model_name_index;
+    struct Index *motion_name_index;
+};
+int thread_counter = 0; //現在、どれだけのスレッドが同時に動いているか代入する
+void jointCalculation(void* parm){
+    struct JCArgs *jc_args = parm;
+    struct Model model = jc_args->model;
+    MotionData *motionData = jc_args->motionData;
+    struct BoneFrame* parent_boneFrame = jc_args->parent_boneFrame;
+    struct Bone model_parent_bone = jc_args->model_parent_bone;
+    struct Index *model_index = jc_args->model_name_index;
+    struct Index *motion_index = jc_args->motion_name_index;
+
+    thread_counter++;
 
     //printf("親ボーン:%s, ", word_decode(parent_boneFrame->name, 15, "UTF-8", "SHIFT-JIS"));
     //クォータニオンからオイラー角を算出。回転順序はYXZで、オイラー角のYとZに-1をかける必要がある。
@@ -230,7 +249,10 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
     qz = parent_boneFrame->qz*-1;
     qw = parent_boneFrame->qw;
 
-    if(qw > 0.98)return;
+    if(qw > 0.98){
+        thread_counter--;
+        return;
+    }
 
     float ox, oy, oz;
     ox = asinf(-(2*qy*qz-2*qx*qw))*180/M_PI;
@@ -300,12 +322,17 @@ void jointCalculation(struct Model model, MotionData *motionData, struct BoneFra
         for(int child2_bone_i = 0; child2_bone_i < model.bone[child_bone_index].child_bone_size; child2_bone_i++){
             int index = getIndex(*model_index, model.bone[model.bone[child_bone_index].child_bones[child2_bone_i]].model_name_jp.byte);
             //int index = getIndex(model_index, model.bone[child_bone_index].model_name_jp.byte);
-            if(index==-1)
+            if(index==-1){
+                thread_counter--;
                 return;
-            jointCalculation(model, motionData, &child_bone_frame, model.bone[child_bone_index], model_index, motion_index);
+            }
+            jc_args->parent_boneFrame = &child_bone_frame;
+            jc_args->model_parent_bone = model.bone[child_bone_index];
+            jointCalculation(jc_args);
         }
     }
     //printf("--rollback--\n");
+    thread_counter--;
 }
 /*
  * この関数を使用することで、関節の角度によるボーンの移動距離をモデルをベースに算出し、移動座標に付加できる。
@@ -324,7 +351,7 @@ void modelPhysics(struct Model model, MotionData *motionData){
         char assigned = 0;
 
         addIndex(&model_name_index, model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size);
-        for(int i1 = 0; i1 < motionData->maxFrame.maxFrame; i1++){
+        for(int i1 = 0; i1 < motionData->maxFrame.maxFrame; i1+=1000){
             char* motion_born_name = word_decode(motionData->boneFrame[i1].name, 15, "UTF-8", "SHIFT-JIS");
             if(strncmp(model_born_name, motion_born_name, 15) == 0){
                 addIndex(&motion_bone_name_index, motionData->boneFrame[i1].name, 15);
@@ -351,9 +378,23 @@ void modelPhysics(struct Model model, MotionData *motionData){
         }
 
         //子ボーンの座標を計算
-        if(model_parent_bone.child_bone_size != 0) {
-            jointCalculation(model, motionData, &parent_boneFrame, model_parent_bone, &model_name_index, &motion_bone_name_index);
-            printf("フレーム:%d/%d(%ld回計算)\n", i, motionData->maxFrame.maxFrame, ex_counter);
+        if(model_parent_bone.child_bone_size != 0 && parent_boneFrame.qw < 0.98 ||
+            parent_boneFrame.x+parent_boneFrame.y+parent_boneFrame.z != 0) {
+            pthread_t thread;
+            struct JCArgs *jc_args = malloc(sizeof(struct JCArgs));
+
+            jc_args->model = model;
+            jc_args->motionData = motionData;
+            jc_args->parent_boneFrame = &parent_boneFrame;
+            jc_args->model_parent_bone = model_parent_bone;
+            jc_args->model_name_index = &model_name_index;
+            jc_args->motion_name_index = &motion_bone_name_index;
+
+            while (thread_counter > 100){}
+            int ret = pthread_create(&thread, NULL, jointCalculation, jc_args);
+            if (ret!=0) exit(1);
+            //jointCalculation(model, motionData, &parent_boneFrame, model_parent_bone, &model_name_index, &motion_bone_name_index);
+            printf("フレーム:%d/%d(%ld回計算)スレッド:%d\n", i, motionData->maxFrame.maxFrame, ex_counter, thread_counter);
             ex_counter=0;
         }
     }
@@ -371,12 +412,12 @@ void writeMotion(const char* output_file_path, MotionData motionData){
 
 
 int main(){
-    MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", false);
+    MotionData motionData = getMotion("/home/server/ClionProjects/MMDMotionMaker/data/motion.vmd", true);
     printf("%d\n",motionData.maxFrame.maxFrame);
     printf("%s\n", word_decode(motionData.boneFrame[10000].name, 15, "UTF-8", "SHIFT-JIS"));
 
     struct Model model;
-    getModel("/home/shuta/MikuMikuDance_v932x64/models/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx", &model);
+    getModel("/home/server/ClionProjects/MMDMotionMaker/data/YYBHatsuneMiku_10th/YYB Hatsune Miku_10th_v1.02.pmx", &model);
     modelPhysics(model, &motionData);
 
     return 0;
