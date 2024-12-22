@@ -31,6 +31,11 @@ struct Euler{
     float z;
 };
 
+struct Matrix{
+    float value[3][3];
+};
+
+
 struct Quaternion SphericalLinearInterpolation(const float *q0, const float *q1, const float t){
     float q[4];
     float dot = q0[0] * q1[0] + q0[1] * q1[1] + q0[2] * q1[2] + q0[3] * q1[3];
@@ -93,6 +98,24 @@ struct Euler QuaternionToEuler(float qw, float qx, float qy, float qz){
     }
 
     return euler;
+}
+
+struct Matrix QuaternionToMatrix(float qw, float qx, float qy, float qz){
+    struct Matrix matrix;
+
+    matrix.value[0][0] = 2*powf(qw,2) + 2* powf(qx,2)-1;
+    matrix.value[0][1] = 2*qx*qy - 2*qz*qw;
+    matrix.value[0][2] = 2*qx*qz + 2*qy*qw;
+
+    matrix.value[1][0] = 2*qx*qy + 2*qz*qw;
+    matrix.value[1][1] = 2*powf(qw,2) + 2*powf(qy, 2)-1;
+    matrix.value[1][2] = 2*qy*qz - 2*qx*qw;
+
+    matrix.value[2][0] = 2*qx*qz - 2*qy*qw;
+    matrix.value[2][1] = 2*qy*qz + 2*qx*qw;
+    matrix.value[2][2] = 2*powf(qw,2) + 2*powf(qz, 2)-1;
+
+    return matrix;
 }
 
 MotionData getMotion(const char* path, bool frame_completion){
@@ -260,17 +283,7 @@ struct PtrArray{
 struct TrigFunctionData{
     int bone_index; //この三角関数を計算するために使ったボーンのインデックス
 
-    float x_sin;
-    float x_cos; //y軸に対して掛け算
-    float x_tan; //z軸に対して掛け算
-
-    float y_sin;
-    float y_cos; //z軸に対して掛け算
-    float y_tan; //x軸に対して掛け算
-
-    float z_sin;
-    float z_cos; //x軸に対して掛け算
-    float z_tan; //y軸に対して掛け算
+    struct Matrix matrix;
 
     float x; //座標軸に対して加算する値x
     float y; //座標軸に対して加算する値y
@@ -280,7 +293,7 @@ struct TrigFunctionData{
 };
 int count = 0; //現在、どれだけのスレッドが同時に動いているか代入する
 void jointCalculation(int frame, struct BoneFrame* current_frames, struct Index *model_index, struct Index *motion_index, struct Model model){
-    struct PtrArray trigsPtrArray;//モデルと同じインデックスに、親ボーンの回転角が代入された三角関数構造体で構成されたPtrArrayが代入される
+    struct PtrArray trigsPtrArray;//モデルと同じインデックスに、親ボーンの回転角が代入された三角関数構造体が代入される
     trigsPtrArray.addr = malloc(sizeof(long) * model_index->assigned);
     for(int i = 0; i < model_index->assigned; i++) trigsPtrArray.addr[i] = NULL;
 
@@ -289,7 +302,7 @@ void jointCalculation(int frame, struct BoneFrame* current_frames, struct Index 
         struct BoneFrame *current_bone_frame = &current_frames[bone_i];
         struct Bone current_edited_bone = model.bone[bone_i];
         //printf("親ボーン:%s, ", word_decode(parent_boneFrame->name, 15, "UTF-8", "SHIFT-JIS"));
-        //current_bone_frame->y-=0.1f; //TODO 0.1マイナスする（MMDがy軸に0.1ずれてる）
+        current_bone_frame->y-=0.1f; //TODO 0.1マイナスする（MMDがy軸に0.1ずれてる）
         //子ボーンに加算する値を代入
         for (int child_bone_i = 0; child_bone_i < current_edited_bone.child_bone_size; child_bone_i++) {
             struct PtrArray *temp;
@@ -310,34 +323,31 @@ void jointCalculation(int frame, struct BoneFrame* current_frames, struct Index 
             qz = current_bone_frame->qz*-1;
             qw = current_bone_frame->qw;
 
-            float ox, oy, oz;
-            struct Euler euler = QuaternionToEuler(qw, qx, qy, qz);
-            ox = euler.x;
-            oy = euler.y;
-            oz = euler.z;
+            printf("sum %f\n", qw*qw+qx*qx+qy*qy+qz*qz);
+            struct Matrix matrix_convert = QuaternionToMatrix(qw, qx, qy, qz);
+            struct Matrix matrix;
             qy *= -1;
             qz *= -1;
-
-            trigFunctionData->bone_index = bone_i;
-            trigFunctionData->access_count=0;
-            //z方向の回転を計算
-            trigFunctionData->z_sin = sinf(deg_to_rad(oz));
-            trigFunctionData->z_cos = cosf(deg_to_rad(oz));
-            trigFunctionData->z_tan = tanf(deg_to_rad(oz));
-            //y方向の回転を計算
-            trigFunctionData->y_sin = sinf(deg_to_rad(oy));
-            trigFunctionData->y_tan = tanf(deg_to_rad(oy));
-            trigFunctionData->y_cos = cosf(deg_to_rad(oy));
-            //x方向の回転を計算
-            trigFunctionData->x_sin = sinf(deg_to_rad(ox));
-            trigFunctionData->x_cos = cosf(deg_to_rad(ox));
-            trigFunctionData->x_tan = tanf(deg_to_rad(ox));
 
             //移動座標のオフセットを代入
             trigFunctionData->x = current_bone_frame->x;
             trigFunctionData->y = current_bone_frame->y;
             trigFunctionData->z = current_bone_frame->z;
+            trigFunctionData->bone_index = bone_i;
+            trigFunctionData->access_count=0;
 
+            if(trigsPtrArray.addr[bone_i] != NULL){//このボーンの親がNULLでなければボーンに親ボーンの角度を加算
+                struct TrigFunctionData* temp = (struct TrigFunctionData*) trigsPtrArray.addr[bone_i];
+                //内積を計算して回転行列に回転を合成
+                for (int i0 = 0; i0 < 3; i0++){
+                    for(int i1 = 0; i1 < 3; i1++){
+                        for(int i2 = 0; i2 < 3; i2++){
+                            matrix.value[i0][i1] += temp->matrix.value[i0][i2]*matrix_convert.value[i2][i1];
+                        }
+                    }
+                }
+            }else matrix = matrix_convert;
+            trigFunctionData->matrix = matrix;
         } else{
             //ボーン名前を代入
             char* name = word_decode(model_index->name[bone_i], 15, "SHIFT-JIS", model.header.encode==1 ? "UTF-8" : "UTF-16");
@@ -354,18 +364,18 @@ void jointCalculation(int frame, struct BoneFrame* current_frames, struct Index 
 
             trigFunctionData->bone_index = bone_i;
             trigFunctionData->access_count=0; //アクセスカウントを0で初期化
-            /*以下はオイラー角のx,y,zが全て0である場合、三角関数で出力される値*/
-            trigFunctionData->z_sin = 0;
-            trigFunctionData->z_cos = 1;
-            trigFunctionData->z_tan = 0;
-            //y方向の回転を計算
-            trigFunctionData->y_sin = 0;
-            trigFunctionData->y_tan = 0;
-            trigFunctionData->y_cos = 1;
-            //x方向の回転を計算
-            trigFunctionData->x_sin = 0;
-            trigFunctionData->x_cos = 1;
-            trigFunctionData->x_tan = 0;
+            struct Matrix matrix = {0};
+            if(trigsPtrArray.addr[bone_i] != NULL){//このボーンの親がNULLでなければボーンに親ボーンの角度を加算
+                struct TrigFunctionData* temp = (struct TrigFunctionData*) trigsPtrArray.addr[bone_i];
+
+                matrix = temp->matrix;
+            }else{
+                matrix.value[0][0] = 1;
+                matrix.value[1][1] = 1;
+                matrix.value[2][2] = 1;
+            }
+            /*回転行列の初期値を代入してtirgFunctionDataに代入*/
+            trigFunctionData->matrix = matrix;
 
             trigFunctionData->x = 0;
             trigFunctionData->y = 0;
@@ -375,9 +385,8 @@ void jointCalculation(int frame, struct BoneFrame* current_frames, struct Index 
         //子ボーンに加算する値を代入
         for (int child_bone_i = 0; child_bone_i < current_edited_bone.child_bone_size; child_bone_i++) {
             int child_bone_index = current_edited_bone.child_bones[child_bone_i];
-            struct PtrArray *temp = (struct PtrArray*)trigsPtrArray.addr[child_bone_index];
 
-            temp->addr[temp->size++] = trigFunctionData;
+            trigsPtrArray.addr[child_bone_index] = trigFunctionData;
             trigFunctionData->access_count++;
         }
 
@@ -394,80 +403,51 @@ void jointCalculation(int frame, struct BoneFrame* current_frames, struct Index 
             float ay = current_edited_bone.locations[1];
             float az = current_edited_bone.locations[2];
 
-            struct PtrArray *temp = (struct PtrArray*) trigsPtrArray.addr[bone_i];
-            for(int addr_i = 0; addr_i < temp->size; addr_i++){
-                struct TrigFunctionData *trigFunctionData_temp = (struct TrigFunctionData*) temp->addr[addr_i];
-                struct Bone parent_bone = model.bone[trigFunctionData_temp->bone_index];
-                struct BoneFrame parent_boneFrame = current_frames[trigFunctionData_temp->bone_index];
+            struct TrigFunctionData *trigFunctionData_temp = (struct TrigFunctionData*) trigsPtrArray.addr[bone_i];
+            struct Bone parent_bone = model.bone[trigFunctionData_temp->bone_index];
+            struct BoneFrame parent_boneFrame = current_frames[trigFunctionData_temp->bone_index];
 
-                //このボーンで計算する三角関数を、子に継承
-                for(int i = 0; i < current_edited_bone.child_bone_size; i++){
-                    struct PtrArray *temp2 = (struct PtrArray*)trigsPtrArray.addr[current_edited_bone.child_bones[i]];
-                    temp2->addr[temp2->size++] = trigFunctionData_temp;
-                    trigFunctionData_temp->access_count++;
-                }
+            //子ボーンを正とした相対座標(Relative Coordinates)を計算
+            float rx = current_edited_bone.locations[0] - parent_bone.locations[0];
+            float ry = current_edited_bone.locations[1] - parent_bone.locations[1];
+            float rz = current_edited_bone.locations[2] - parent_bone.locations[2];
 
-                //子ボーンを正とした相対座標(Relative Coordinates)を計算
-                float rx = current_edited_bone.locations[0] - parent_bone.locations[0];
-                float ry = current_edited_bone.locations[1] - parent_bone.locations[1];
-                float rz = current_edited_bone.locations[2] - parent_bone.locations[2];
-                float ed = sqrtf(rx*rx+ry*ry+rz*rz);    //ユークリッド距離の計算
+            float trig_rx=0, trig_ry=0, trig_rz=0;
+            float *r1, *r2, *r3;
 
-                float trig_rx=0, trig_ry=0, trig_rz=0;
+            r1 = trigFunctionData_temp->matrix.value[0];
+            r2 = trigFunctionData_temp->matrix.value[1];
+            r3 = trigFunctionData_temp->matrix.value[2];
 
-                trig_rx += ed * trigFunctionData_temp->z_cos * trigFunctionData_temp->y_cos;
-                trig_ry += ed * trigFunctionData_temp->x_cos * trigFunctionData_temp->y_sin;
-                trig_rz += ed * trigFunctionData_temp->x_sin;
-                /*
-                trig_rx += ry*trigFunctionData_temp->z_tan;
-                if (trigFunctionData_temp->z_cos != 0) trig_ry += ry-ry*1/trigFunctionData_temp->z_cos;
-                else trig_ry -= ry;
+            trig_rx = r1[0]*rx+r1[1]*ry+r1[2]*rz-rx;
+            trig_ry = r2[0]*rx+r2[1]*ry+r2[2]*rz-ry;
+            trig_rz = r3[0]*rx+r3[1]*ry+r3[2]*rz-rz;
 
-                trig_rx += rz*trigFunctionData_temp->y_tan;
-                if(trigFunctionData_temp->y_cos != 0) trig_rz += rz-rz*1/trigFunctionData_temp->y_cos;
-                else trig_rz -= rz;
-
-                if(trigFunctionData_temp->x_cos != 0) trig_ry += ry-ry*1/trigFunctionData_temp->x_cos;
-                else trig_ry -= ry;
-                trig_rz += ry*trigFunctionData_temp->x_tan;
-                 */
+            //絶対座標の計算
+            ax += trig_rx + (parent_boneFrame.x - parent_bone.locations[0]);
+            ay += trig_ry + (parent_boneFrame.y - parent_bone.locations[1]);
+            az += trig_rz + (parent_boneFrame.z - parent_bone.locations[2]);
 
 
-                //絶対座標の計算
-                ax += trig_rx + trigFunctionData_temp->x;
-                ay += trig_ry + trigFunctionData_temp->y;
-                az += trig_rz + trigFunctionData_temp->z;
-
-                char* tempstr = malloc(5112);
-                sprintf(tempstr, "%s  %4f,%4f,%4f 派生:%s 角度: %4f, %4f, %4f ユークリッド距離:%4f\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), ax, ay, az, word_decode(parent_bone.model_name_jp.byte, parent_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"),
-                        asinf(trigFunctionData_temp->x_sin), asinf(trigFunctionData_temp->y_sin), asinf(trigFunctionData_temp->z_sin), ed);
-                free(tempstr);
-
-                trigFunctionData_temp->x_cos = 1;
-                trigFunctionData_temp->x_tan = 0;
-                trigFunctionData_temp->y_cos = 1;
-                trigFunctionData_temp->y_tan = 0;
-                trigFunctionData_temp->z_cos = 1;
-                trigFunctionData_temp->z_tan = 0;
-
-                if(--trigFunctionData_temp->access_count <= 0) {
-                    free(trigFunctionData_temp);
-                    count--;
-                }
-            }
-            free(temp->addr);
-            free(temp);
             current_bone_frame->x += ax;
             current_bone_frame->y += ay;
             current_bone_frame->z += az;
 
             char* tempstr = malloc(5112);
-            sprintf(tempstr, "%s  %4f,%4f,%4f\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), current_bone_frame->x, current_bone_frame->y, current_bone_frame->z);
+            sprintf(tempstr, "%s  %4f,%4f,%4f 派生:%s\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), current_bone_frame->x, current_bone_frame->y, current_bone_frame->z, word_decode(parent_bone.model_name_jp.byte, parent_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"));
             free(tempstr);
+
+            if(--trigFunctionData_temp->access_count <= 0) {
+                free(trigFunctionData_temp);
+                count--;
+            }
         }else{
             current_bone_frame->x = current_edited_bone.locations[0];
             current_bone_frame->y = current_edited_bone.locations[1];
             current_bone_frame->z = current_edited_bone.locations[2];
+            char* tempstr = malloc(5112);
+            sprintf(tempstr, "%s %4f,%4f,%4f\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), current_edited_bone.locations[0], current_edited_bone.locations[1], current_edited_bone.locations[2]);
+            printf(tempstr);
         }
     }
     free(trigsPtrArray.addr);
@@ -534,6 +514,7 @@ void writeMotion(const char* output_file_path, MotionData motionData){
 int main(){
     MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", true);
     printf("%d\n",motionData.maxFrame.maxFrame);
+    writeMotion("/home/shuta/デスクトップ/motion1.vmd", motionData);
     //printf("%s\n", word_decode(motionData.boneFrame[10000].name, 15, "UTF-8", "SHIFT-JIS"));
 
     struct Model model;
