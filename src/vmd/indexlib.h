@@ -31,7 +31,7 @@ char* word_decode(char* string, int length, char* toCode, char* fromCode){ //エ
 
 
 struct Index{
-    char name[512][1024];
+    char name[1024][1024];
     int assigned;
 };
 

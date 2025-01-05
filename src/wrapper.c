@@ -1,6 +1,6 @@
 #include <python3.11/Python.h>
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
-#include "vmdStruct.h"
+#include "vmd/vmdStruct.h"
 #include <stdbool.h>
 
 extern MotionData getMotion(const char*, bool);
@@ -114,7 +114,7 @@ static PyObject* getModel_wrapper(PyObject* self, PyObject* args)
     PyObject* model_data = PyList_New(0);
     struct Model model;
     getModel(path, &model);
-    printf("encode mode %d\n", model.header.encode[0]);
+    printf("encode mode %d\n", model.header.encode);
     for(int i = 0; i < model.bone_size; i++){
         PyObject* bytes = PyBytes_FromStringAndSize(model.bone[i].model_name_jp.byte, model.bone[i].model_name_jp.byte_size);
         PyList_Append(model_data, bytes);
