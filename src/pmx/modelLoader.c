@@ -1,8 +1,7 @@
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
 
 #include <stdio.h>
-#include <malloc.h>
-#include "pmxStruct.h"
+#include "functions.h"
 
 void getModel(const char* path, struct Model *model){
     

@@ -31,14 +31,28 @@ char* word_decode(char* string, int length, char* toCode, char* fromCode){ //エ
 
 
 struct Index{
-    char name[1024][1024];
+    char **name;
     int assigned;
+    int fullsize;
 };
 
-struct Index makeIndex(){
+struct Index makeIndex(int size, int char_byte){
     struct Index index;
     index.assigned = 0;
+    index.fullsize = size;
+
+    index.name = malloc(size * sizeof(index.name));
+    for(int i = 0; i < size; i++){
+        index.name[i] = calloc(1, char_byte);
+    }
     return index;
+}
+
+void destroy_index(struct Index *index){
+    for(int i = 0; i < index->fullsize; i++){
+        free(index->name[i]);
+    }
+    free(index->name);
 }
 
 int getnIndex(struct Index index, char *from, int n){
@@ -58,8 +72,9 @@ int getIndex(struct Index index, char* from){
     return -1;
 }
 
-void addIndex(struct Index *index, char* name, int n){
+int addIndex(struct Index *index, char* name, int n){
     memcpy(index->name[index->assigned], name, n);
     index->assigned++;
+    return index->assigned-1;
 }
 #endif //TEST_INDEXLIB_H

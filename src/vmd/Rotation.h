@@ -29,6 +29,17 @@ double qdot(struct Quaternion q1, struct Quaternion q2){
     return q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
 }
 
+//クォータニオンを逆クォータニオンにする
+struct Quaternion inverse(struct Quaternion q){
+    struct Quaternion quaternion;
+    quaternion.x = -q.x;
+    quaternion.y = -q.y;
+    quaternion.z = -q.z;
+    quaternion.w = q.w;
+
+    return q;
+}
+
 struct Quaternion mul(struct Quaternion q, double f) {
     struct Quaternion quaternion;
     quaternion.x = f * q.x;
@@ -62,6 +73,10 @@ struct Quaternion add(struct Quaternion q1, struct Quaternion q2) {
 
 struct Quaternion SphericalLinearInterpolation(struct Quaternion q1, struct Quaternion q2, const double t){
     double dot = qdot(q1, q2);
+    if(dot < 0){
+        q2 = mul(q2, -1);
+        dot = qdot(q1, q2);
+    }
     if(dot > 1) dot = 1;
     if(dot < -1) dot = -1;
     double r = acos(dot);
@@ -75,13 +90,17 @@ struct Quaternion SphericalLinearInterpolation(struct Quaternion q1, struct Quat
     }else if(t==1.0f){
         return q2;
     }
-
     return add(
             mul(q1, sin((1.0-t) * r) * is),
             mul(q2, sin(t * r) * is)
     );
 }
-
+struct Quaternion LinearInterpolation(struct Quaternion q1, struct Quaternion q2, const double t) {
+    return add(
+            mul(q1, (1-t)),
+            mul(q2, t)
+            );
+}
 
 //TODO ジンバルロックの対応ができていない
 //回転順序はYXZ

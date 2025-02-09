@@ -2,7 +2,6 @@
 #define vmdStruct_H
 
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
-#pragma once
 
 // ヘッダ
 struct Header_vmd{
@@ -35,5 +34,30 @@ typedef struct {
     struct MaxFrame maxFrame;
     struct BoneFrame *boneFrame;
 } MotionData;
+
+struct EncodeBoneFrame{
+    float x;
+    float y;
+    float z;
+
+    float qx;
+    float qy;
+    float qz;
+    float qw;
+};
+
+struct NameIndexer{
+    char name[32];
+    int name_byte;
+    int index;
+};
+
+typedef struct {
+    struct EncodeBoneFrame **encodeBoneFrame;//[フレーム数][ボーン数]
+    struct NameIndexer nameIndexer[1024];
+
+    int encodeBoneFrame_size; //最大フレーム数を代入
+    int nameIndexer_size;
+}EncodeMotionData;
 
 #endif
