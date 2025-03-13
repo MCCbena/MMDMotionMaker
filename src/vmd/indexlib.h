@@ -77,4 +77,14 @@ int addIndex(struct Index *index, char* name, int n){
     index->assigned++;
     return index->assigned-1;
 }
+
+char equal(const char* s1, const char* s2, int n){
+    for (int i = 0; i < n; ++i) {
+        if(s1[i]!=s2[i]){
+            return 0;
+        }
+    }
+    return 1;
+}
+
 #endif //TEST_INDEXLIB_H

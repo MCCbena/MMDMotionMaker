@@ -36,14 +36,14 @@ typedef struct {
 } MotionData;
 
 struct EncodeBoneFrame{
-    float x;
-    float y;
-    float z;
+    long double x;
+    long double y;
+    long double z;
 
-    float qx;
-    float qy;
-    float qz;
-    float qw;
+    long double qx;
+    long double qy;
+    long double qz;
+    long double qw;
 };
 
 struct NameIndexer{
