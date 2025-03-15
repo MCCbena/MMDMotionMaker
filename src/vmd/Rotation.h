@@ -25,7 +25,7 @@ struct Matrix{
     long double value[3][3];
 };
 
-struct Quaternion quaternionNormalization(struct Quaternion q){
+static struct Quaternion quaternionNormalization(struct Quaternion q){
     struct Quaternion q_r;
     long double norm_val = sqrtl(powl(q.x, 2) + powl(q.y, 2) + powl(q.z, 2) + powl(q.w, 2));
 
@@ -37,12 +37,12 @@ struct Quaternion quaternionNormalization(struct Quaternion q){
     return q_r;
 }
 
-long double qdot(struct Quaternion q1, struct Quaternion q2){
+static long double qdot(struct Quaternion q1, struct Quaternion q2){
     return q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w;
 }
 
 //クォータニオンを逆クォータニオンにする
-struct Quaternion inverse(struct Quaternion q){
+static struct Quaternion inverse(struct Quaternion q){
     struct Quaternion quaternion;
     quaternion.x = -q.x;
     quaternion.y = -q.y;
@@ -52,7 +52,7 @@ struct Quaternion inverse(struct Quaternion q){
     return quaternion;
 }
 
-struct Quaternion mul(struct Quaternion q, long double f) {
+static struct Quaternion mul(struct Quaternion q, long double f) {
     struct Quaternion quaternion;
     quaternion.x = f * q.x;
     quaternion.y = f * q.y;
@@ -62,7 +62,7 @@ struct Quaternion mul(struct Quaternion q, long double f) {
     return quaternion;
 }
 
-struct Quaternion qmul(struct Quaternion q1, struct Quaternion q2){
+static struct Quaternion qmul(struct Quaternion q1, struct Quaternion q2){
     struct Quaternion q;
     q.x = (q2.w * q1.x) - (q2.z * q1.y) + (q2.y * q1.z) + (q2.x * q1.w);
     q.y = (q2.z * q1.x) + (q2.w * q1.y) - (q2.x * q1.z) + (q2.y * q1.w);
@@ -73,7 +73,7 @@ struct Quaternion qmul(struct Quaternion q1, struct Quaternion q2){
 }
 
 
-struct Quaternion add(struct Quaternion q1, struct Quaternion q2) {
+static struct Quaternion add(struct Quaternion q1, struct Quaternion q2) {
     struct Quaternion quaternion;
     quaternion.x = q1.x + q2.x;
     quaternion.y = q1.y + q2.y;
@@ -83,7 +83,7 @@ struct Quaternion add(struct Quaternion q1, struct Quaternion q2) {
     return quaternionNormalization(quaternion);
 }
 
-struct Quaternion SphericalLinearInterpolation(struct Quaternion q1, struct Quaternion q2, const long double t){
+static struct Quaternion SphericalLinearInterpolation(struct Quaternion q1, struct Quaternion q2, const long double t){
     long double dot = qdot(q1, q2);
     if(dot < 0){
         q2 = mul(q2, -1);
@@ -107,7 +107,7 @@ struct Quaternion SphericalLinearInterpolation(struct Quaternion q1, struct Quat
             mul(q2, sinl(t * r) * is)
     ));
 }
-struct Quaternion LinearInterpolation(struct Quaternion q1, struct Quaternion q2, const double t) {
+static struct Quaternion LinearInterpolation(struct Quaternion q1, struct Quaternion q2, const double t) {
     return add(
             mul(q1, (1-t)),
             mul(q2, t)
@@ -116,7 +116,7 @@ struct Quaternion LinearInterpolation(struct Quaternion q1, struct Quaternion q2
 
 //TODO ジンバルロックの対応ができていない
 //回転順序はYXZ
-struct Euler QuaternionToEuler(struct Quaternion quaternion){
+static struct Euler QuaternionToEuler(struct Quaternion quaternion){
     long double qx = quaternion.x, qy = quaternion.y, qz = quaternion.z, qw = quaternion.w;
     struct Euler euler;
     euler.x = asinl(-(2*qy*qz-2*qx*qw))*180/M_PI;
@@ -132,7 +132,7 @@ struct Euler QuaternionToEuler(struct Quaternion quaternion){
 }
 
 //回転順序はYXZ
-struct Euler QuaternionToEulerSingle(long double qx, long double qy, long double qz, long double qw){
+static struct Euler QuaternionToEulerSingle(long double qx, long double qy, long double qz, long double qw){
     struct Euler euler;
     euler.x = asinl(-(2*qy*qz-2*qx*qw))*180/M_PI;
     if(cosl(euler.x)==0.0f){
@@ -146,7 +146,7 @@ struct Euler QuaternionToEulerSingle(long double qx, long double qy, long double
     return euler;
 }
 
-struct Matrix QuaternionToMatrix(struct Quaternion q){
+static struct Matrix QuaternionToMatrix(struct Quaternion q){
     struct Matrix matrix;
     long double qx, qy, qz, qw;
     qx = q.x;

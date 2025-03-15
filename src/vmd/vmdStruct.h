@@ -54,7 +54,7 @@ struct NameIndexer{
 
 typedef struct {
     struct EncodeBoneFrame **encodeBoneFrame;//[フレーム数][ボーン数]
-    struct NameIndexer nameIndexer[1024];
+    struct NameIndexer nameIndexer[4096];
 
     int encodeBoneFrame_size; //最大フレーム数を代入
     int nameIndexer_size;

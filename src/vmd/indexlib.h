@@ -11,7 +11,7 @@
 
 #pragma pack(1) // 構造体をきつくパッキングし、1バイトのアライメント
 
-char* word_decode(char* string, int length, char* toCode, char* fromCode){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
+static char* word_decode(char* string, int length, char* toCode, char* fromCode){ //エンコードされている構造体ファイルのcharをshiftjisでデコード
     char inbuf[MAX_BUF + 1] = {0};
     char outbuf[MAX_BUF + 1] = {0};
     char *in = inbuf;
@@ -36,7 +36,7 @@ struct Index{
     int fullsize;
 };
 
-struct Index makeIndex(int size, int char_byte){
+static struct Index makeIndex(int size, int char_byte){
     struct Index index;
     index.assigned = 0;
     index.fullsize = size;
@@ -48,14 +48,14 @@ struct Index makeIndex(int size, int char_byte){
     return index;
 }
 
-void destroy_index(struct Index *index){
+static void destroy_index(struct Index *index){
     for(int i = 0; i < index->fullsize; i++){
         free(index->name[i]);
     }
     free(index->name);
 }
 
-int getnIndex(struct Index index, char *from, int n){
+static int getnIndex(struct Index index, char *from, int n){
     for(int i = 0; i < index.assigned; i++){
         if(strncmp(index.name[i], from, n) == 0){
             return i;
@@ -63,7 +63,7 @@ int getnIndex(struct Index index, char *from, int n){
     }
     return -1;
 }
-int getIndex(struct Index index, char* from){
+static int getIndex(struct Index index, char* from){
     for(int i = 0; i < index.assigned; i++){
         if(strcmp(index.name[i], from) == 0){
             return i;
@@ -72,13 +72,13 @@ int getIndex(struct Index index, char* from){
     return -1;
 }
 
-int addIndex(struct Index *index, char* name, int n){
+static int addIndex(struct Index *index, char* name, int n){
     memcpy(index->name[index->assigned], name, n);
     index->assigned++;
     return index->assigned-1;
 }
 
-char equal(const char* s1, const char* s2, int n){
+static char equal(const char* s1, const char* s2, int n){
     for (int i = 0; i < n; ++i) {
         if(s1[i]!=s2[i]){
             return 0;

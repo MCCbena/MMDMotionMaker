@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 
-void getModelInfo(FILE *fpw, struct ModelInfo *model){
+static void getModelInfo(FILE *fpw, struct ModelInfo *model){
     //モデル名を取得
     fread(&model->model_name_jp.byte_size, sizeof(int), 1, fpw);
     fread(&model->model_name_jp.byte, model->model_name_jp.byte_size, 1, fpw);
@@ -26,7 +26,7 @@ void getModelInfo(FILE *fpw, struct ModelInfo *model){
     fread(&model->comment_en.byte, model->comment_en.byte_size, 1, fpw);
 }
 
-void getTopData(FILE *fpw, struct TopData *topData, struct Header_pmx header){
+static void getTopData(FILE *fpw, struct TopData *topData, struct Header_pmx header){
     //位置を設定
     fread(&topData->location, sizeof(float) * 3, 1, fpw);
     //法線を設定
@@ -79,19 +79,19 @@ void getTopData(FILE *fpw, struct TopData *topData, struct Header_pmx header){
     fread(&topData->edge_magnification, sizeof(float), 1, fpw);
 }
 
-void getSurface(struct Surface *surface, FILE *fpw){
+static void getSurface(struct Surface *surface, FILE *fpw){
 
     for(int i=0; i < 3; i++) {
         fread(&surface->face_vert_index[i], 2, 1, fpw);
     }
 }
 
-void getTexture(struct Texture *texture, FILE *fpw){
+static void getTexture(struct Texture *texture, FILE *fpw){
     fread(&texture->path.byte_size, sizeof(int), 1, fpw);
     fread(&texture->path.byte, texture->path.byte_size, 1, fpw);
 }
 
-void getMaterialData(struct Header_pmx header, struct Material *material, FILE *fpw){
+static void getMaterialData(struct Header_pmx header, struct Material *material, FILE *fpw){
     //素材の名前を設定
     fread(&material->materialName_jp.byte_size, sizeof(int), 1, fpw);
     fread(&material->materialName_jp.byte, material->materialName_jp.byte_size, 1, fpw);
@@ -131,7 +131,7 @@ void getMaterialData(struct Header_pmx header, struct Material *material, FILE *
     fread(&material->vertex_size, sizeof(int), 1, fpw);
 }
 
-void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
+static void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
     //初期化
     bone->child_bone_size=0;
     bone->child_bones = malloc(sizeof(int)*32);//32は子ボーンの最大値

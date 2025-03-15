@@ -8,7 +8,7 @@
 #include "indexlib.h"
 #include <math.h>
 #include "Rotation.h"
-#include "../pmx/modelLoader.c"
+//#include "../pmx/modelLoader.c"
 
 
 
@@ -265,6 +265,7 @@ void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct
             encodeBoneFrame[bone_i].qw = (float)q.w;
 
 
+            /*
             if(frame==0) {
                 char *tempstr = malloc(5112);
                 sprintf(tempstr, "%s  %4Lf,%4Lf,%4Lf,%4Lf 派生:%s\n",
@@ -276,6 +277,7 @@ void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct
                 printf(tempstr);
                 free(tempstr);
             }
+             */
 
 
         }else{
@@ -321,7 +323,7 @@ void makeParentChildLink(int* dist, struct Model model){
  * この関数を使用することで、関節の角度によるボーンの移動距離をモデルをベースに算出し、移動座標に付加できる。
  * また、必ずgetMotionのフレームを補完を行ってから実行すること。
 */
-EncodeMotionData modelPhysics(struct Model model, MotionData *motionData){
+EncodeMotionData motionEncoder(struct Model model, MotionData *motionData){
     printf("インデックス作成\n");
     char* encode_codec = model.header.encode==1 ? "UTF-8" : "UTF-16";
 
@@ -538,6 +540,7 @@ void jointCalculationDecoder(int frame, struct EncodeBoneFrame* current_frames, 
 
             //printf("%s\n", word_decode(current_bone_frame->name, 15, "UTF-8", "SHIFT-JIS"));
             struct Quaternion q = inverse(qmul((quaternion_p), inverse(quaternion_c)));
+            /*
             if(frame==140) {
                 char *tempstr = malloc(5112);
                 sprintf(tempstr, "%s  %4Lf,%4Lf,%4Lf,%4Lf 派生:%s\n",
@@ -554,6 +557,7 @@ void jointCalculationDecoder(int frame, struct EncodeBoneFrame* current_frames, 
                     printf("equal\n");
                 }
             }
+             */
 
             //エンコードボーンフレーム構造体に代入
             decodeBoneFrame[bone_i].x = (float)ax;
@@ -589,7 +593,7 @@ void jointCalculationDecoder(int frame, struct EncodeBoneFrame* current_frames, 
 }
 
 //need_boneはshift-jis
-MotionData decode(EncodeMotionData encodeMotionData, struct Model model, struct Index need_bone){
+MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, struct Index need_bone){
     //ボーンフレームを構築
     int max_frame = encodeMotionData.encodeBoneFrame_size;
     struct BoneFrame **decodeBoneFrame2D = calloc(sizeof(struct BoneFrame), encodeMotionData.encodeBoneFrame_size); //[フレーム][ボーン数]
@@ -638,6 +642,13 @@ MotionData decode(EncodeMotionData encodeMotionData, struct Model model, struct 
 
     //モーションデータの作成
     MotionData motionData;
+
+    //ヘッダの書き込み
+    char* modelName = word_decode(model.modelInfo.model_name_jp.byte, model.modelInfo.model_name_jp.byte_size, "SHIFT-JIS", model.header.encode == 0 ? "UTF-16" : "UTF-8");
+    memcpy(motionData.header.modelName, modelName, model.modelInfo.model_name_jp.byte_size > 20 ? 20 : model.modelInfo.model_name_jp.byte_size);
+    memcpy(motionData.header.header, "Vocaloid Motion Data 0002", 25);
+    free(modelName);
+
     motionData.boneFrame = calloc(sizeof(struct BoneFrame), max_frame*encodeMotionData.nameIndexer_size);
     int assigned = 0;
     for (int i0 = 0; i0 < motion_name_index.assigned; ++i0) {
@@ -679,6 +690,7 @@ void writeMotion(const char* output_file_path, MotionData motionData){
     fclose(fpw);
 }
 
+/*
 int main(){
     MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", true);
     printf("%d\n", motionData.maxFrame.maxFrame);
@@ -694,8 +706,8 @@ int main(){
     struct Model model;
     getModel("/home/shuta/MikuMikuDance_v932x64/models/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx",
              &model);
-    EncodeMotionData encodeMotionData = modelPhysics(model, &motionData);
-    MotionData decodeMotionData = decode(encodeMotionData, model, bone_index);
+    EncodeMotionData encodeMotionData = motionEncoder(model, &motionData);
+    MotionData decodeMotionData = motionDecoder(encodeMotionData, model, bone_index);
     memcpy(decodeMotionData.header.header, motionData.header.header, 30);
     memcpy(decodeMotionData.header.modelName, motionData.header.modelName, 20);
     writeMotion("/home/shuta/デスクトップ/motion2.vmd", decodeMotionData);
@@ -739,3 +751,4 @@ int main1(){
     return 0;
 
 }
+ */
