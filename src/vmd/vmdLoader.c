@@ -412,13 +412,12 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
         struct EncodeBoneFrame *current_bone_frame = &current_frames[bone_i];
         struct Bone current_edited_bone = model.bone[bone_i];
         //クォータニオンからオイラー角を算出。回転順序はYXZで、オイラー角のYとZに-1をかける必要がある。
-        if(sqrtl(powl(current_bone_frame->qx, 2) + powl(current_bone_frame->qy, 2) + powl(current_bone_frame->qz, 2) + powl(current_bone_frame->qw, 2)) < 0.0){
+        if(sqrtl(powl(current_bone_frame->qx, 2) + powl(current_bone_frame->qy, 2) + powl(current_bone_frame->qz, 2) + powl(current_bone_frame->qw, 2)) == 0.0){
             //x,y,zとqx,qy,qzを0に、qwを1に初期化
             float *locations = (float*)&current_bone_frame->x; //#pragma pack(1)でメモリが詰められているため有効に動作する。
             for(int i = 0; i < 7; i++) {
                 locations[i] = (i == 6) ? 1.0f : 0.0f;
             }
-            printf("補完:%s\n", word_decode(current_edited_bone.model_name_jp.byte,current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"));
 
 
             //親ボーンらが移動した合計を計算
@@ -434,10 +433,10 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
                 quaternion_p.w = parent_boneFrame.qw;
                 quaternion_p = quaternionNormalization(quaternion_p);
                 struct Quaternion quaternion_c;
-                quaternion_c.x = current_bone_frame->qx;
-                quaternion_c.y = current_bone_frame->qy;
-                quaternion_c.z = current_bone_frame->qz;
-                quaternion_c.w = current_bone_frame->qw;
+                quaternion_c.x = 0;
+                quaternion_c.y = 0;
+                quaternion_c.z = 0;
+                quaternion_c.w = 1;
                 quaternion_c = quaternionNormalization(quaternion_c);
 
                 //子ボーンを正とした相対座標(Relative Coordinates)を計算
@@ -485,6 +484,11 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
                 current_bone_frame->x += current_edited_bone.locations[0];
                 current_bone_frame->y += current_edited_bone.locations[1];
                 current_bone_frame->z += current_edited_bone.locations[2];
+
+                current_bone_frame->qx = 0;
+                current_bone_frame->qy = 0;
+                current_bone_frame->qz = 0;
+                current_bone_frame->qw = 1;
                 /*
                 char* tempstr = malloc(5112);
                 sprintf(tempstr, "%s %4f,%4f,%4f\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), current_edited_bone.locations[0], current_edited_bone.locations[1], current_edited_bone.locations[2]);
