@@ -267,10 +267,29 @@ static PyTypeObject PyModelType = {
 static PyObject* PyEncodeMotionNew(PyObject *self, PyObject *args){
     PyEncodeMotion* pyEncodeMotion = (PyEncodeMotion*) PyObject_CallObject((PyObject*)&PyEncodeMotionType, NULL);
     PyObject* nameIndexerList;
+    PyObject* inputObject;
 
     //引数1にモデルの名前をリストにして入れたものを代入（bytes）
-    if(!PyArg_ParseTuple(args, "O", &nameIndexerList)){
+    if(!PyArg_ParseTuple(args, "O", &inputObject)){
         printf("error\n");
+        return NULL;
+    }
+
+    //入力された引数がListかmodelかを判定
+    if(Py_IS_TYPE(inputObject, &PyList_Type)){
+        nameIndexerList = inputObject;
+    }else if(Py_IS_TYPE(inputObject, &PyModelType)){
+        nameIndexerList = PyList_New(0);
+        PyModel *pyModel = (PyModel*)inputObject;
+        for (int i = 0; i < pyModel->model.bone_size; ++i){
+            //モデルのボーンをnameIndexerに追加
+            PyList_Append(nameIndexerList,
+                          PyBytes_FromStringAndSize(
+                                  pyModel->model.bone[i].model_name_jp.byte,
+                                  pyModel->model.bone[i].model_name_jp.byte_size));
+        }
+    }else{
+        PyErr_SetString(PyExc_TypeError, "arg is not support type. support type is List or PyModel.");
         return NULL;
     }
 
@@ -278,8 +297,9 @@ static PyObject* PyEncodeMotionNew(PyObject *self, PyObject *args){
     pyEncodeMotion->encodeMotionData.encodeBoneFrame_size = 0;
     for (int i = 0; i < PyList_GET_SIZE(nameIndexerList); ++i){
         pyEncodeMotion->encodeMotionData.nameIndexer[i].index = i;
-        pyEncodeMotion->encodeMotionData.nameIndexer[i].name_byte = 15; //vmdファイルで保存されるボーン名のバイト数
-        memcpy(pyEncodeMotion->encodeMotionData.nameIndexer[i].name, PyBytes_AsString(PyList_GetItem(nameIndexerList, i)), pyEncodeMotion->encodeMotionData.nameIndexer[i].name_byte);
+        pyEncodeMotion->encodeMotionData.nameIndexer[i].name_byte = PyBytes_GET_SIZE(PyList_GetItem(nameIndexerList, i)); //適当に決めた最大バイト数
+        memcpy(pyEncodeMotion->encodeMotionData.nameIndexer[i].name, PyBytes_AsString(PyList_GetItem(nameIndexerList, i)),
+               PyBytes_GET_SIZE(PyList_GetItem(nameIndexerList, i)));
     }
 
     pyEncodeMotion->encodeMotionData.encodeBoneFrame = calloc(sizeof(struct EncodeBoneFrame), FrameExpansionRate);
@@ -423,7 +443,7 @@ static PyObject* setEncodeBoneFrame(PyEncodeMotion* self, PyObject* args){
     self->encodeMotionData.encodeBoneFrame[frame][bone].qw = pyEncodeBoneFrame->qw;
 
     long double norm = sqrtl(powl(pyEncodeBoneFrame->qx, 2) + powl(pyEncodeBoneFrame->qy, 2) + powl(pyEncodeBoneFrame->qz, 2) + powl(pyEncodeBoneFrame->qw, 2));
-    if(!(norm > 0.999999 && norm < 1.1)){
+    if(!(norm > 0.99 && norm < 1.1)){
         char err[128];
         sprintf(err, "Bad quaternion norm. norm:%Lf", norm);
         PyErr_SetString(PyExc_TypeError, err);
@@ -437,7 +457,9 @@ static PyObject* setEncodeBoneFrame(PyEncodeMotion* self, PyObject* args){
 static PyObject* getNameIndexer(PyEncodeMotion* self, PyObject* args){
     PyObject* index = PyList_New(self->encodeMotionData.nameIndexer_size);
     for (int i = 0; i < self->encodeMotionData.nameIndexer_size; ++i){
-        PyList_SetItem(index,self->encodeMotionData.nameIndexer[i].index, PyBytes_FromStringAndSize(self->encodeMotionData.nameIndexer[i].name, self->encodeMotionData.nameIndexer[i].name_byte));
+        //終端文字の除去
+        int size = self->encodeMotionData.nameIndexer[i].name_byte;
+        PyList_SetItem(index,self->encodeMotionData.nameIndexer[i].index, PyBytes_FromStringAndSize(self->encodeMotionData.nameIndexer[i].name, size));
     }
 
     return index;
@@ -518,7 +540,7 @@ PyMODINIT_FUNC PyInit_VMDConverter(){
     }
 
     if(PyModule_AddObjectRef(m, "PyMotion", (PyObject*)&PyMotionType) < 0 || PyModule_AddObjectRef(m, "PyModel", (PyObject*)&PyModelType) ||
-            PyModule_AddObjectRef(m, "PyEncodeMotion", (PyObject*)&PyEncodeMotionType) < 0 || PyModule_AddObjectRef(m, "PyEncodeBoneFrame", (PyObject*)&PyBoneFrameType) < 0 ){
+            PyModule_AddObjectRef(m, "PyEncodeMotion", (PyObject*)&PyEncodeMotionType) < 0 || PyModule_AddObjectRef(m, "PyEncodeBoneFrame", (PyObject*)&PyEncodeBoneFrameType) < 0 ){
         Py_DECREF(m);
         return NULL;
     }

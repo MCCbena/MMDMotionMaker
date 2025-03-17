@@ -25,14 +25,22 @@ def decodeMotion(encodeMotion:PyEncodeMotion, model:PyModel, needBones:list[str]
     """エンコードされたモーションをvmd形式にデコードします。
     :param encodeMotion: デコードするモーション
     :param model: エンコードした際に使った基準となるモデル（必ず同じモデルを使用してください）
-    :param needBones: デコードしたPyMotionに代入するボーン（髪1やスカート1などの不要なボーンを含まないようにするためのものです）
+    :param needBones: デコードしたPyMotionに代入するボーン（髪1やスカート1などの不要なボーンを含まないようにするためのものです）shift-jisでエンコードしてください。
     """
 
-def createEncodeMotion(bones:list[bytes]) ->  PyEncodeMotion:
+@overload
+def createEncodeMotion(bones:list[bytes]) -> PyEncodeMotion:
     """
-    EncodeMotionを新しく作成します。ボーンフレームは内部的に2次元配列で管理されます
+    EncodeMotionを新しく作成します。ボーンフレームは内部的に2次元配列で管理されます。
     :param bones: [フレーム番号][ボーン番号]という配列の内[ボーン番号]の部分のボーンです。渡されたリストのインデックスと対応します。
     """
+@overload
+def createEncodeMotion(model:PyModel) -> PyEncodeMotion:
+    """
+    EncodeMotionを新しく作成します。ボーンフレームは内部的に2次元配列で管理されます。
+    :param model: モデルからボーン名を参照し、PyEncodeMotionを構築します。[フレーム番号][ボーン番号]という配列の内[ボーン番号]の部分のボーンです。
+    """
+
 class PyMotion:
     """モーションデータを格納するクラスです。"""
     def getBoneFrame(self) -> list[PyBoneFrame]:
