@@ -8,18 +8,15 @@
 #include "indexlib.h"
 #include <math.h>
 #include "Rotation.h"
-//#include "../pmx/modelLoader.c"
-
 
 
 const char bezier[64] = {20, 20, 0, 0, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 20, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 0};
 
-float getPos(const float pos1, const float pos2, float time){
-    return (3* powf(1.0f-time, 2)*time*pos1+3.0f* (1-time)* powf(time, 2)*pos2+ powf(time, 3));
+
+long double getPos(const long double pos1, const long double pos2, long double time){
+    return (3* powl(1.0-time, 2)*time*pos1+3.0f* (1-time)* powl(time, 2)*pos2 + powl(time, 3));
 }
 
-struct BoneFrame **pBoneFrame;
-int f = 0;
 MotionData getMotion(const char* path, bool frame_completion){
     //構造体を宣言
 
@@ -59,7 +56,7 @@ MotionData getMotion(const char* path, bool frame_completion){
 
 
         //フレームを補完
-        pBoneFrame = (struct BoneFrame**) calloc(sizeof(struct BoneFrame*), index.assigned);
+        struct BoneFrame **pBoneFrame = (struct BoneFrame**) calloc(sizeof(struct BoneFrame*), index.assigned);
 
         for(int i = 0; i < index.assigned; i++){
             pBoneFrame[i] = calloc(sizeof(struct BoneFrame), max_frame);
@@ -98,7 +95,7 @@ MotionData getMotion(const char* path, bool frame_completion){
                                 pos1 = (float) final_registration_boneFrame.bezier[4] / 127;
                                 pos2 = (float) final_registration_boneFrame.bezier[12] / 127;
                                 position_increment = pBoneFrame[i][end].x - final_registration_boneFrame.x;
-                                float x = final_registration_boneFrame.x + position_increment * getPos(pos1, pos2,time_count_base *(float) (k -start +1));
+                                float x = (float)(final_registration_boneFrame.x + position_increment * getPos(pos1, pos2,time_count_base *(float) (k -start +1)));
                                 pBoneFrame[i][k].x = x;
                             }else pBoneFrame[i][k].x = final_registration_boneFrame.x;
                             //座標y
@@ -106,7 +103,7 @@ MotionData getMotion(const char* path, bool frame_completion){
                                 pos1 = (float) final_registration_boneFrame.bezier[5] / 127;
                                 pos2 = (float) final_registration_boneFrame.bezier[13] / 127;
                                 position_increment = pBoneFrame[i][end].y - final_registration_boneFrame.y;
-                                float y = final_registration_boneFrame.y + position_increment * getPos(pos1, pos2,time_count_base *(float) (k -start +1));
+                                float y = (float)(final_registration_boneFrame.y + position_increment * getPos(pos1, pos2,time_count_base *(float) (k -start +1)));
                                 pBoneFrame[i][k].y = y;
                             }else pBoneFrame[i][k].y = final_registration_boneFrame.y;
                             //座標z
@@ -114,7 +111,7 @@ MotionData getMotion(const char* path, bool frame_completion){
                                 pos1 = (float) final_registration_boneFrame.bezier[6] / 127;
                                 pos2 = (float) final_registration_boneFrame.bezier[14] / 127;
                                 position_increment = pBoneFrame[i][end].z - final_registration_boneFrame.z;
-                                float z = final_registration_boneFrame.z + position_increment * getPos(pos1, pos2,time_count_base *(float) (k -start +1));
+                                float z = (float)(final_registration_boneFrame.z + position_increment * getPos(pos1, pos2,time_count_base *(float) (k -start +1)));
                                 pBoneFrame[i][k].z = z;
                             } else pBoneFrame[i][k].z = final_registration_boneFrame.z;
 
@@ -124,7 +121,7 @@ MotionData getMotion(const char* path, bool frame_completion){
                             pos2 = (float) final_registration_boneFrame.bezier[15] / 127;
 
 
-                            float t = getPos(pos1, pos2, time_count_base *(float) (k - start +1));
+                            float t = (float)(getPos(pos1, pos2, time_count_base *(float) (k - start +1)));
 
 
                             struct Quaternion q1, q2;
@@ -162,7 +159,10 @@ MotionData getMotion(const char* path, bool frame_completion){
                 synthesis_boneFrame[n] = pBoneFrame[i][j];
                 n++;
             }
+            free(pBoneFrame[i]);
+            pBoneFrame[i] = NULL;
         }
+        free(pBoneFrame);
         motionData.maxFrame.maxFrame = n;
         //memcpy(motionData.boneFrame, synthesis_boneFrame, n*111);
         free(motionData.boneFrame);
@@ -349,9 +349,10 @@ EncodeMotionData motionEncoder(struct Model model, MotionData *motionData){
 
         //出力用のインデックスも作成
         char* temp = word_decode(model.bone[i0].model_name_jp.byte, model.bone[i0].model_name_jp.byte_size, "SHIFT-JIS", model.header.encode==0 ? "UTF-16":"UTF-8");
-        memcpy(encodeMotionData.nameIndexer[encodeMotionData.nameIndexer_size].name, temp, 15);
-        encodeMotionData.nameIndexer[encodeMotionData.nameIndexer_size].name_byte = 15;
+        memcpy(encodeMotionData.nameIndexer[encodeMotionData.nameIndexer_size].name, temp, strlen(temp));
+        encodeMotionData.nameIndexer[encodeMotionData.nameIndexer_size].name_byte = (int)strlen(temp);
         encodeMotionData.nameIndexer[encodeMotionData.nameIndexer_size++].index = n;
+        free(temp);
 
     }
     motion_bone_name_index.assigned = model_name_index.assigned;
@@ -406,6 +407,7 @@ EncodeMotionData motionEncoder(struct Model model, MotionData *motionData){
     return encodeMotionData;
 }
 
+int debug = 0;
 //エンコードされたencodeBoneFrameで欠落しているボーンを復元する
 void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model_index, struct Model model, const int* parentBoneDataPtrArray){
     for(int bone_i = 0; bone_i < model_index->assigned; bone_i++){
@@ -431,13 +433,11 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
                 quaternion_p.y = parent_boneFrame.qy;
                 quaternion_p.z = parent_boneFrame.qz;
                 quaternion_p.w = parent_boneFrame.qw;
-                quaternion_p = quaternionNormalization(quaternion_p);
                 struct Quaternion quaternion_c;
                 quaternion_c.x = 0;
                 quaternion_c.y = 0;
                 quaternion_c.z = 0;
                 quaternion_c.w = 1;
-                quaternion_c = quaternionNormalization(quaternion_c);
 
                 //子ボーンを正とした相対座標(Relative Coordinates)を計算
                 float rx = current_edited_bone.locations[0] - parent_bone.locations[0];
@@ -457,10 +457,16 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
                 combination_rz = r3[0] * rx + r3[1] * ry + r3[2] * rz;
 
                 //絶対座標の計算
-                long double ax = combination_rx + current_bone_frame->x + parent_boneFrame.x;
-                long double ay = combination_ry + current_bone_frame->y + parent_boneFrame.y;
-                long double az = combination_rz + current_bone_frame->z + parent_boneFrame.z;
+                long double ax = combination_rx + parent_boneFrame.x;
+                long double ay = combination_ry + parent_boneFrame.y;
+                long double az = combination_rz + parent_boneFrame.z;
 
+                /*
+                if(debug==1) {
+                    printf("補完: %s, %Lf, %Lf, %Lf -> ", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), ax, ay, az);
+                    printf("親: %s, %Lf, %Lf, %Lf\n", word_decode(parent_bone.model_name_jp.byte, parent_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), parent_boneFrame.x, parent_boneFrame.y, parent_boneFrame.z);
+                }
+                 */
 
                 current_bone_frame->x = (float)ax;
                 current_bone_frame->y = (float)ay;
@@ -468,11 +474,10 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
 
                 //printf("%s\n", word_decode(current_bone_frame->name, 15, "UTF-8", "SHIFT-JIS"));
 
-                struct Quaternion q = qmul(quaternion_p, quaternion_c);
-                current_bone_frame->qx = (float)q.x;
-                current_bone_frame->qy = (float)q.y;
-                current_bone_frame->qz = (float)q.z;
-                current_bone_frame->qw = (float)q.w;
+                current_bone_frame->qx = (float)quaternion_p.x;
+                current_bone_frame->qy = (float)quaternion_p.y;
+                current_bone_frame->qz = (float)quaternion_p.z;
+                current_bone_frame->qw = (float)quaternion_p.w;
                 /*
                 char* tempstr = malloc(5112);
                 sprintf(tempstr, "%s  %4f,%4f,%4f 派生:%s\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), current_bone_frame->x, current_bone_frame->y, current_bone_frame->z, word_decode(parent_bone.model_name_jp.byte, parent_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"));
@@ -481,9 +486,9 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
 
             }else{
                 //エンコードボーンフレーム構造体に代入
-                current_bone_frame->x += current_edited_bone.locations[0];
-                current_bone_frame->y += current_edited_bone.locations[1];
-                current_bone_frame->z += current_edited_bone.locations[2];
+                current_bone_frame->x = current_edited_bone.locations[0];
+                current_bone_frame->y = current_edited_bone.locations[1];
+                current_bone_frame->z = current_edited_bone.locations[2];
 
                 current_bone_frame->qx = 0;
                 current_bone_frame->qy = 0;
@@ -494,6 +499,8 @@ void jointCompletion(struct EncodeBoneFrame* current_frames, struct Index *model
                 sprintf(tempstr, "%s %4f,%4f,%4f\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), current_edited_bone.locations[0], current_edited_bone.locations[1], current_edited_bone.locations[2]);
                 free(tempstr);
                  */
+
+                //if(debug==1)printf("親不在補完:%s\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"));
             }
         }
     }
@@ -543,6 +550,8 @@ void jointCalculationDecoder(int frame, struct EncodeBoneFrame* current_frames, 
             long double az = current_bone_frame->z - (parent_boneFrame->z + combination_rz);
 
             //printf("%s\n", word_decode(current_bone_frame->name, 15, "UTF-8", "SHIFT-JIS"));
+
+            //if(debug==1) printf("%s, %s, %Lf, %Lf, %Lf\n", word_decode(current_edited_bone.model_name_jp.byte, current_edited_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), word_decode(parent_bone.model_name_jp.byte, parent_bone.model_name_jp.byte_size, "UTF-8", "UTF-16"), ax, ay, az);
             struct Quaternion q = inverse(qmul((quaternion_p), inverse(quaternion_c)));
             /*
             if(frame==140) {
@@ -564,14 +573,18 @@ void jointCalculationDecoder(int frame, struct EncodeBoneFrame* current_frames, 
              */
 
             //エンコードボーンフレーム構造体に代入
-            decodeBoneFrame[bone_i].x = (float)ax;
-            decodeBoneFrame[bone_i].y = (float)ay;
-            decodeBoneFrame[bone_i].z = (float)az;
+            if(current_edited_bone.bone_flags & 0x0004) {
+                decodeBoneFrame[bone_i].x = (float) ax;
+                decodeBoneFrame[bone_i].y = (float) ay;
+                decodeBoneFrame[bone_i].z = (float) az;
+            }
 
-            decodeBoneFrame[bone_i].qx = (float)q.x;
-            decodeBoneFrame[bone_i].qy = (float)q.y;
-            decodeBoneFrame[bone_i].qz = (float)q.z;
-            decodeBoneFrame[bone_i].qw = (float)q.w;
+            if(current_edited_bone.bone_flags & 0x0002) {
+                decodeBoneFrame[bone_i].qx = (float) q.x;
+                decodeBoneFrame[bone_i].qy = (float) q.y;
+                decodeBoneFrame[bone_i].qz = (float) q.z;
+                decodeBoneFrame[bone_i].qw = (float) q.w;
+            }
 
         }else{
             //エンコードボーンフレーム構造体に代入
@@ -625,7 +638,7 @@ MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, 
 
         //ボーンフレーム2Dにフレームを代入
         for (int i1 = 0; i1 < encodeMotionData.nameIndexer_size; ++i1) {
-            if(strncmp(temp, encodeMotionData.nameIndexer[i1].name, encodeMotionData.nameIndexer[i1].name_byte) == 0){
+            if(strncmp(temp, encodeMotionData.nameIndexer[i1].name, 15) == 0){
                 for (int i2 = 0; i2 < max_frame; ++i2) {
                     encodeBoneFrame2D[i2][i0] = encodeMotionData.encodeBoneFrame[i2][encodeMotionData.nameIndexer[i1].index];
                 }
@@ -640,6 +653,8 @@ MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, 
     makeParentChildLink(link, model);
 
     for (int i0 = 0; i0 < max_frame; ++i0) {
+        if(i0==0) debug=1;
+        else debug=0;
         jointCompletion(encodeBoneFrame2D[i0], &model_name_index_utf8, model, link);
         jointCalculationDecoder(i0, encodeBoneFrame2D[i0], &motion_name_index, decodeBoneFrame2D[i0], model, link);
     }
@@ -657,30 +672,30 @@ MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, 
     int assigned = 0;
     for (int i0 = 0; i0 < motion_name_index.assigned; ++i0) {
         for (int i1 = 0; i1 < need_bone.assigned; ++i1) {
-            char* temp1 = word_decode(motion_name_index.name[i0], 15, "UTF-8", "SHIFT-JIS");
-            char* temp2 = word_decode(need_bone.name[i1], 15, "UTF-8", "SHIFT-JIS");
-            if(strncmp(temp1, temp2, 15) == 0){
+            if(strcmp(motion_name_index.name[i0], need_bone.name[i1]) == 0){
                 for (int i2 = 0; i2 < max_frame; ++i2) {
                     motionData.boneFrame[assigned] = decodeBoneFrame2D[i2][i0];
-                    if(strncmp(temp1, "上半身", 15) == 0){
-                    //    memcpy(motionData.boneFrame[assigned].name, need_bone.name[i1], 15);
-                    }
                     assigned++;
                 }
                 break;
             }
-            free(temp1);
-            temp1 = NULL;
-            free(temp2);
-            temp2 = NULL;
         }
     }
     motionData.maxFrame.maxFrame = assigned;
 
+    for (int i = 0; i < encodeMotionData.encodeBoneFrame_size; ++i) {
+        free(encodeBoneFrame2D[i]);
+        encodeBoneFrame2D[i] = NULL;
+        free(decodeBoneFrame2D[i]);
+        decodeBoneFrame2D[i] = NULL;
+    }
     free(encodeBoneFrame2D);
     encodeBoneFrame2D = NULL;
     free(decodeBoneFrame2D);
     decodeBoneFrame2D = NULL;
+
+    destroy_index(&motion_name_index);
+    destroy_index(&model_name_index_utf8);
 
     return motionData;
 }
@@ -695,64 +710,46 @@ void writeMotion(const char* output_file_path, MotionData motionData){
 }
 
 /*
+#include "../pmx/modelLoader.c"
 int main(){
-    MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", true);
-    printf("%d\n", motionData.maxFrame.maxFrame);
-    writeMotion("/home/shuta/デスクトップ/motion1.vmd", motionData);
-    //printf("%s\n", word_decode(motionData.boneFrame[10000].name, 15, "UTF-8", "SHIFT-JIS"));
+    for (int k = 0; k < 10; ++k) {
 
-    struct Index bone_index = makeIndex(400, 15);
-    for (int i = 0; i < motionData.maxFrame.maxFrame; i++) {
-        if(getnIndex(bone_index, motionData.boneFrame[i].name, 15) == -1)
-            addIndex(&bone_index, motionData.boneFrame[i].name, 15);
+        MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", true);
+        printf("%d\n", motionData.maxFrame.maxFrame);
+        writeMotion("/home/shuta/デスクトップ/motion1.vmd", motionData);
+        //printf("%s\n", word_decode(motionData.boneFrame[10000].name, 15, "UTF-8", "SHIFT-JIS"));
+
+        struct Index bone_index = makeIndex(400, 15);
+        for (int i = 0; i < motionData.maxFrame.maxFrame; i++) {
+            if (getnIndex(bone_index, motionData.boneFrame[i].name, 15) == -1)
+                addIndex(&bone_index, motionData.boneFrame[i].name, 15);
+        }
+
+        struct Model model;
+        getModel("/home/shuta/MikuMikuDance_v932x64/models/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx",
+                 &model);
+        EncodeMotionData encodeMotionData = motionEncoder(model, &motionData);
+        MotionData decodeMotionData = motionDecoder(encodeMotionData, model, bone_index);
+        memcpy(decodeMotionData.header.header, motionData.header.header, 30);
+        memcpy(decodeMotionData.header.modelName, motionData.header.modelName, 20);
+        writeMotion("/home/shuta/デスクトップ/motion2.vmd", decodeMotionData);
+        for (int i = 0; i < encodeMotionData.encodeBoneFrame_size; i++) {
+            free(encodeMotionData.encodeBoneFrame[i]);
+        }
+        free(encodeMotionData.encodeBoneFrame);
+        for (int i = 0; i < model.bone_size; i++) free(model.bone[i].child_bones);
+        free(model.bone);
+        free(model.texture);
+        free(model.surface);
+        free(model.topData);
+        free(model.material);
+
+        free(motionData.boneFrame);
+        free(decodeMotionData.boneFrame);
+
+        destroy_index(&bone_index);
+
     }
-
-    struct Model model;
-    getModel("/home/shuta/MikuMikuDance_v932x64/models/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx",
-             &model);
-    EncodeMotionData encodeMotionData = motionEncoder(model, &motionData);
-    MotionData decodeMotionData = motionDecoder(encodeMotionData, model, bone_index);
-    memcpy(decodeMotionData.header.header, motionData.header.header, 30);
-    memcpy(decodeMotionData.header.modelName, motionData.header.modelName, 20);
-    writeMotion("/home/shuta/デスクトップ/motion2.vmd", decodeMotionData);
-    for (int i = 0; i < encodeMotionData.encodeBoneFrame_size; i++) {
-        free(encodeMotionData.encodeBoneFrame[i]);
-    }
-    free(encodeMotionData.encodeBoneFrame);
-    for (int i = 0; i < model.bone_size; i++) free(model.bone[i].child_bones);
-    free(model.bone);
-    free(model.texture);
-    free(model.surface);
-    free(model.topData);
-    free(model.material);
-
-    free(motionData.boneFrame);
-
-
     return 0;
-}
-
-int main1(){
-    struct Quaternion q1 = {0};
-    q1.w = 0.87214514;
-    q1.x = -0.24410777;
-    q1.y = -0.29476663;
-    q1.z = 0.30477349;
-    struct Quaternion q2 = {0};
-    q2.w = -0.82200395;
-    q2.x = 0.30170365;
-    q2.y = -0.47702741;
-    q2.z = 0.07569188;
-    struct Quaternion q3 = qmul(q1, q2);
-
-    struct Quaternion q4 = q1;
-    for(int i = 0; i < 4; i++){
-        ((double *)&q4)[i] *= -1;
-    }
-    q4.w *= -1;
-    struct Quaternion q5 = qmul(q4, q3);
-
-    return 0;
-
 }
  */

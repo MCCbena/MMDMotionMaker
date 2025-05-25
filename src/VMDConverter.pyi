@@ -21,11 +21,19 @@ def encodeMotion(motionData:PyMotion, model:PyModel) -> PyEncodeMotion:
     :param model: 基準となるモデル
     """
 
-def decodeMotion(encodeMotion:PyEncodeMotion, model:PyModel, needBones:list[str]) -> PyMotion:
+def decodeMotion(encodeMotion:PyEncodeMotion, model:PyModel, needBones:list[bytes]) -> PyMotion:
     """エンコードされたモーションをvmd形式にデコードします。
     :param encodeMotion: デコードするモーション
     :param model: エンコードした際に使った基準となるモデル（必ず同じモデルを使用してください）
     :param needBones: デコードしたPyMotionに代入するボーン（髪1やスカート1などの不要なボーンを含まないようにするためのものです）shift-jisでエンコードしてください。
+    """
+
+def linearInterpolation(n1:PyEncodeBoneFrame, n2:PyEncodeBoneFrame, t:float) -> PyEncodeBoneFrame:
+    """
+    エンコードボーンフレームを線形補間の計算を行います。クォータニオンの補完で使われるアルゴリズムはSphericalLinearです。三軸ベクトルの補完は至ってシンプルなもののため、実装を確認してください。
+    :param n1: 補完前のボーンフレーム
+    :param n2: 補完後のボーンフレーム
+    :param t: 経過時間(0~1の範囲をとってください)。
     """
 
 @overload
@@ -116,7 +124,13 @@ class PyEncodeMotion:
         """
     def getNameIndex(self) -> list[bytes]:
         """
-        ボーンの名前のリストを取得します。返されるリストのインデックスとエンコードモーションデータ内部のインデックスは同じです。
+        ボーンの名前のリストを取得します。返されるリストのインデックスとエンコードモーションデータ内部のインデックスは同じです。全てSHIFT-JISでエンコードされた状態です。
+        """
+
+    def getIndexFromBoneName(self, boneName:bytes) -> int:
+        """
+        指定したボーン名のインデックスを取得します。[フレーム][ボーン番号]のボーン番号の部分です。
+        :param boneName: ボーン名を指定します。SHIFT-JISでエンコードしてください。
         """
 
 class PyEncodeBoneFrame:
