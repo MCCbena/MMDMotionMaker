@@ -181,11 +181,12 @@ MotionData getMotion(const char* path, bool frame_completion){
 
     return motionData;
 }
+
+
 void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct Index *model_index, struct EncodeBoneFrame *encodeBoneFrame, struct Model model, const int* parentBoneDataPtrArray){
     for(int bone_i = 0; bone_i < model_index->assigned; bone_i++){
         struct BoneFrame *current_bone_frame = &current_frames[bone_i];
         struct Bone current_edited_bone = model.bone[bone_i];
-        //クォータニオンからオイラー角を算出。回転順序はYXZで、オイラー角のYとZに-1をかける必要がある。
         if(current_bone_frame->name[0] == 0){
             //ボーン名前を代入
             char* name = word_decode(model_index->name[bone_i], 15, "SHIFT-JIS", model.header.encode==1 ? "UTF-8" : "UTF-16");
@@ -319,11 +320,12 @@ void makeParentChildLink(int* dist, struct Model model){
         }
     }
 }
+
 /*
  * この関数を使用することで、関節の角度によるボーンの移動距離をモデルをベースに算出し、移動座標に付加できる。
  * また、必ずgetMotionのフレームを補完を行ってから実行すること。
 */
-EncodeMotionData motionEncoder(struct Model model, MotionData *motionData){
+EncodeMotionData motionEncoder(struct Model model, MotionData *motionData, int stride){
     printf("インデックス作成\n");
     char* encode_codec = model.header.encode==1 ? "UTF-8" : "UTF-16";
 
@@ -385,11 +387,12 @@ EncodeMotionData motionEncoder(struct Model model, MotionData *motionData){
         }
     }
     printf("計算開始\n");
-    encodeMotionData.encodeBoneFrame = calloc(sizeof(struct EncodeBoneFrame), max_frame);
+    max_frame /= stride;
+    encodeMotionData.encodeBoneFrame = calloc(sizeof(struct EncodeBoneFrame), max_frame+1);
     encodeMotionData.encodeBoneFrame_size = max_frame+1;
     for(int i = 0; i <= max_frame; i++){
         encodeMotionData.encodeBoneFrame[i] = calloc(sizeof(struct EncodeBoneFrame), model.bone_size);
-        jointCalculationEncoder(i, bone_frames[i], &model_name_index, encodeMotionData.encodeBoneFrame[i], model,
+        jointCalculationEncoder(i, bone_frames[i*stride], &model_name_index, encodeMotionData.encodeBoneFrame[i], model,
                                 parentBoneDataArray);
     }
     printf("完了\n");
@@ -610,7 +613,7 @@ void jointCalculationDecoder(int frame, struct EncodeBoneFrame* current_frames, 
 }
 
 //need_boneはshift-jis
-MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, struct Index need_bone){
+MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, struct Index need_bone, int stride){
     //ボーンフレームを構築
     int max_frame = encodeMotionData.encodeBoneFrame_size;
     struct BoneFrame **decodeBoneFrame2D = calloc(sizeof(struct BoneFrame), encodeMotionData.encodeBoneFrame_size); //[フレーム][ボーン数]
@@ -674,6 +677,7 @@ MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, 
         for (int i1 = 0; i1 < need_bone.assigned; ++i1) {
             if(strcmp(motion_name_index.name[i0], need_bone.name[i1]) == 0){
                 for (int i2 = 0; i2 < max_frame; ++i2) {
+                    decodeBoneFrame2D[i2][i0].frame *= stride;
                     motionData.boneFrame[assigned] = decodeBoneFrame2D[i2][i0];
                     assigned++;
                 }

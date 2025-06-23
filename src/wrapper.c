@@ -10,11 +10,12 @@
 
 extern MotionData getMotion(const char*, bool);
 extern void getModel(const char *, struct Model *);
-extern EncodeMotionData motionEncoder(struct Model model, MotionData *motionData);
-extern MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, struct Index need_bone);
+extern void makeParentChildLink(int*, struct Model);
+extern EncodeMotionData motionEncoder(struct Model model, MotionData *motionData, int stride);
+extern MotionData motionDecoder(EncodeMotionData encodeMotionData, struct Model model, struct Index need_bone, int stride);
 extern void writeMotion(const char*, MotionData);
 
-extern struct Quaternion SphericalLinearInterpolation(struct Quaternion q1, struct Quaternion q2, const long double t);
+
 extern long double getPos(long double pos1, long double pos2, long double time);
 
 
@@ -68,6 +69,9 @@ typedef struct {
 }PyEncodeMotion;
 
 static PyTypeObject PyModelType;
+static PyMethodDef PyModelMethods[];
+static PyObject* getLink(PyObject* self);
+
 static PyMethodDef PyDirectMethods[];
 static PyObject* PyEncodeMotionNew(PyObject *self, PyObject *args);
 static void PyEncodeMotionDealloc(PyEncodeMotion* self);
@@ -186,10 +190,16 @@ static PyObject* decodeMotion_wrapper(PyObject* self, PyObject* args){
     PyEncodeMotion *pyEncodeMotion;
     PyModel *pyModel;
     PyObject *needBoneList;
+    int stride=1;
 
 
     //引数１つ目はPyMotion、２つ目は基準モデル（エンコードしたときに使ったモデルを使うこと）、3つ目は必要なボーンを一覧のリスト
-    if(!PyArg_ParseTuple(args, "OOO", &pyEncodeMotion, &pyModel, &needBoneList)) return NULL;
+    if(!PyArg_ParseTuple(args, "OOO|i", &pyEncodeMotion, &pyModel, &needBoneList, &stride)) return NULL;
+
+    if(stride <= 0) {
+        PyErr_SetString(PyExc_TypeError, "stride must be over 1.");
+        return NULL;
+    }
 
     PyMotion* pyMotion = (PyMotion*) PyObject_CallObject((PyObject*)&PyMotionType, NULL);
 
@@ -200,7 +210,7 @@ static PyObject* decodeMotion_wrapper(PyObject* self, PyObject* args){
             addIndex(&needBoneIndex, boneName, 15);
         }
     }
-    pyMotion->motionData = motionDecoder(pyEncodeMotion->encodeMotionData, pyModel->model, needBoneIndex);
+    pyMotion->motionData = motionDecoder(pyEncodeMotion->encodeMotionData, pyModel->model, needBoneIndex, stride);
     destroy_index(&needBoneIndex);
 
     return (PyObject*) pyMotion;
@@ -266,6 +276,38 @@ static void PyModelDealloc(PyModel* self){
     Py_TYPE(self)->tp_free((PyObject*) self);
 }
 
+static PyMethodDef PyModelMethods[] = {
+        {"getLink", (PyCFunction) getLink, METH_NOARGS, "ボーン間のリンクを取得する。"},
+        {NULL}
+};
+
+static PyObject* getLink(PyObject* self){
+    PyModel *pyModel = (PyModel*) self;
+    int linker[pyModel->model.bone_size];
+
+    makeParentChildLink(linker, pyModel->model);
+
+    PyObject* bone_list = PyList_New(0);
+    for (int i = 0; i < pyModel->model.bone_size; ++i) {
+        PyObject* bone_linker = PyList_New(0);
+
+        PyObject* parent_index = PyLong_FromLong(linker[i]);
+
+        char* encode_codec = pyModel->model.header.encode==1 ? "UTF-8" : "UTF-16";
+        char* bone_name = word_decode(pyModel->model.bone[i].model_name_jp.byte, pyModel->model.bone[i].model_name_jp.byte_size, "UTF-8", encode_codec);
+        PyObject* py_bone_name = PyUnicode_FromString(bone_name);
+        PyList_Append(bone_linker, py_bone_name);
+        PyList_Append(bone_linker, parent_index);
+        PyList_Append(bone_list, bone_linker);
+
+        free(bone_name);
+        Py_DECREF(py_bone_name);
+        Py_DECREF(bone_linker);
+        Py_DECREF(parent_index);
+    }
+
+    return bone_list;
+}
 
 static PyTypeObject PyModelType = {
         .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
@@ -275,6 +317,7 @@ static PyTypeObject PyModelType = {
         .tp_itemsize = 0,
         .tp_flags = Py_TPFLAGS_DEFAULT,
         .tp_new = PyModelNew,
+        .tp_methods = PyModelMethods,
         .tp_dealloc = (destructor) PyModelDealloc,
 };
 
@@ -345,11 +388,16 @@ static void PyEncodeMotionDealloc(PyEncodeMotion* self){
 static PyObject* encodeMotion_wrapper(PyObject* self, PyObject* args){
     PyMotion* pyMotion;
     PyModel* pyModel;
+    int stride=1;
 
     //1番目にPyMotion、2番目にPyModel
-    if(!PyArg_ParseTuple(args, "OO", &pyMotion, &pyModel)) return NULL;
+    if(!PyArg_ParseTuple(args, "OO|i", &pyMotion, &pyModel, &stride)) return NULL;
 
-    EncodeMotionData encode = motionEncoder(pyModel->model, &pyMotion->motionData);
+    if(stride <= 0) {
+        PyErr_SetString(PyExc_TypeError, "stride must be over 1.");
+        return NULL;
+    }
+    EncodeMotionData encode = motionEncoder(pyModel->model, &pyMotion->motionData, stride);
     PyEncodeMotion* pyEncodeMotion = (PyEncodeMotion*)PyObject_CallObject((PyObject*)&PyEncodeMotionType, NULL);
 
     pyEncodeMotion->encodeMotionData = encode;

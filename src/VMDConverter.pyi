@@ -15,17 +15,19 @@ def writeVMD(motionData:PyMotion, motionPath:str):
     :param motionPath: 書き込むモーションのパス
     """
 
-def encodeMotion(motionData:PyMotion, model:PyModel) -> PyEncodeMotion:
+def encodeMotion(motionData:PyMotion, model:PyModel, stride=1) -> PyEncodeMotion:
     """モーションデータをAIが認識可能なデータへ変換します。
     :param motionData: エンコードするモーションのデータ
     :param model: 基準となるモデル
+    :param stride: エンコードするフレームのスライド（2であればフレーム2個飛ばしでエンコードされ、3であれば2個飛ばしでエンコードされます）
     """
 
-def decodeMotion(encodeMotion:PyEncodeMotion, model:PyModel, needBones:list[bytes]) -> PyMotion:
+def decodeMotion(encodeMotion:PyEncodeMotion, model:PyModel, needBones:list[bytes], stride=1) -> PyMotion:
     """エンコードされたモーションをvmd形式にデコードします。
     :param encodeMotion: デコードするモーション
     :param model: エンコードした際に使った基準となるモデル（必ず同じモデルを使用してください）
     :param needBones: デコードしたPyMotionに代入するボーン（髪1やスカート1などの不要なボーンを含まないようにするためのものです）shift-jisでエンコードしてください。
+    :param stride: デコードするフレームの間隔（2であればフレームを2個飛ばしで代入、3であれば2個飛ばしで代入します）
     """
 
 def linearInterpolation(n1:PyEncodeBoneFrame, n2:PyEncodeBoneFrame, t:float) -> PyEncodeBoneFrame:
@@ -88,6 +90,16 @@ class PyModel:
     def __init__(self, modelPath:str):
         """
         :param modelPath: モデルのパス
+        """
+
+    def getLink(self)-> list[dict]:
+        """
+        モデルのボーン間のリンクを取得します。
+        全ての親、腰　という２つのボーンがあるり、全ての親が0、腰に1というインデックス番号が振られてあるとします。
+        その場合、返される値は
+        [["全ての親", -1], ["腰", 0]]
+        となります。全ての親の親ボーンはないため0、腰は全ての親の子であるため、親ボーンのインデックス番号が含まれます。
+        :return:
         """
 
 class PyEncodeMotion:
