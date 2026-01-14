@@ -171,6 +171,7 @@ static void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
         fread(&bone->deformation, sizeof(Deformation), 1, fpw);
     }
     if ((bone->bone_flags & 0x0020) != 0){ //IKが1の場合
+        bone->ik.IK_targetBone_index_size=0;
         fread(&bone->ik.IK_targetBone_index_size, header.bone_index_size, 1, fpw);
         fread(&bone->ik.IK_loop_count, sizeof(int), 1, fpw);
         fread(&bone->ik.IK_limit_angle, sizeof(float), 1, fpw);
@@ -178,6 +179,7 @@ static void getBone(struct Header_pmx header, struct Bone *bone, FILE *fpw){
         fread(&bone->ik.IK_link_count, sizeof(int), 1, fpw);
         for(int i = 0; i < bone->ik.IK_link_count; i++){
             IKLink ikLink;
+            ikLink.linkBone_index_size=0;
             fread(&ikLink.linkBone_index_size, header.bone_index_size, 1, fpw);
             fread(&ikLink.limit_angele, sizeof(char), 1, fpw);
             if(ikLink.limit_angele == 1){

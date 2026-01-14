@@ -81,5 +81,4 @@ void getModel(const char* path, struct Model *model){
             model->bone[bone.parent_bone_index].child_bones[model->bone[bone.parent_bone_index].child_bone_size++] = i;
         }
     }
-
 }

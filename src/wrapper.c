@@ -19,7 +19,9 @@ extern void writeMotion(const char*, MotionData);
 extern long double getPos(long double pos1, long double pos2, long double time);
 
 
-//Dictを用いないdirectパッケージの実装------------------------------------------------------------------------------------------
+/*PyMotion全体に関する実装-------------------------------------------------*/
+#define CREATE_MOTION_FRAME_SIZE 65536 //createMotion関数が呼ばれたときに何フレーム分の容量を確保するか
+
 typedef struct {
     PyObject_HEAD
     MotionData motionData;
@@ -29,10 +31,14 @@ static PyMethodDef PyMotionMethods[];
 static PyTypeObject PyMotionType;
 static void PyMotionDealloc(PyMotion* self);
 static PyObject* getPyBoneFrame_wrapper(PyMotion* self);
+static PyObject* setPyBoneFrame(PyMotion* self, PyObject* args);
 static PyObject* loadVMD_wrapper(PyObject* self, PyObject* args);
+static PyObject* createMotion(PyObject* self, PyObject* args);
 static PyObject* writeVMD_wrapper(PyObject* self, PyObject* args);
 static PyObject* decodeMotion_wrapper(PyObject* self, PyObject* args);
+/*------------------------------------------------------------------------*/
 
+/*PyBoneFrameに関する実装---------------------------------------------------*/
 typedef struct {
     PyObject_HEAD
     PyObject *name; //String 15バイト
@@ -50,19 +56,43 @@ typedef struct {
     PyObject *bezier; //64バイトのリストchar
 }PyBoneFrame;
 
+static PyObject* PyBoneFrameNew(PyTypeObject* type, PyObject* args, PyObject *kwds);
+void PyBoneFrameDealloc(PyBoneFrame* self);
 static PyMemberDef PyBoneFrameMembers[];
 static PyTypeObject PyBoneFrameType;
+/*------------------------------------------------------------------------*/
 
+
+/*PyModelに関する実装--------------------------------------------------------*/
 typedef struct {
     PyObject_HEAD
     struct Model model;
 }PyModel;
 
-static PyTypeObject PyEncodeMotionType;
-static PyMethodDef pyEncodeMotionMethods[];
+
 static PyObject* PyModelNew(PyTypeObject *type, PyObject* args, PyObject *kwds);
 static void PyModelDealloc(PyModel* self);
+static PyObject* getLink(PyObject* self);
+static PyObject* getBone(PyObject* self);
+static void PyBoneDealloc(PyModel* self);
+/*------------------------------------------------------------------------*/
 
+
+/*PyBoneに関する実装---------------------------------------------------------*/
+typedef struct {
+    PyObject_HEAD
+    PyObject* name;
+    float x;
+    float y;
+    float z;
+}PyBone;
+
+static PyTypeObject PyBoneType;
+static PyMemberDef PyBoneMembers[];
+/*------------------------------------------------------------------------*/
+
+
+/*PyEncodeMotionに関する実装-------------------------------------------------*/
 typedef struct {
     PyObject_HEAD
     EncodeMotionData encodeMotionData;
@@ -70,8 +100,9 @@ typedef struct {
 
 static PyTypeObject PyModelType;
 static PyMethodDef PyModelMethods[];
-static PyObject* getLink(PyObject* self);
 
+static PyTypeObject PyEncodeMotionType;
+static PyMethodDef pyEncodeMotionMethods[];
 static PyMethodDef PyDirectMethods[];
 static PyObject* PyEncodeMotionNew(PyObject *self, PyObject *args);
 static void PyEncodeMotionDealloc(PyEncodeMotion* self);
@@ -79,9 +110,11 @@ static PyObject* getEncodeBoneFrame(PyEncodeMotion* self, PyObject* args);
 static PyObject* setEncodeBoneFrame(PyEncodeMotion* self, PyObject* args);
 static PyObject* encodeMotion_wrapper(PyObject* self, PyObject* args);
 static PyObject* getIndexFromBoneName(PyEncodeMotion* self, PyObject* args);
-
 static PyObject* getNameIndexer(PyEncodeMotion* self, PyObject* args);
+/*------------------------------------------------------------------------*/
 
+
+/*PyEncodeBoneFrameに関する実装----------------------------------------------*/
 typedef struct {
     PyObject_HEAD
     double x; //float
@@ -100,6 +133,7 @@ static PyMemberDef PyEncodeBoneFrameMembers[];
 static void PyEncodeBoneFrameDealloc(PyEncodeBoneFrame* self);
 static PyTypeObject PyEncodeBoneFrameType;
 static PyObject* moveComplement(PyObject* self, PyObject* args);
+/*------------------------------------------------------------------------*/
 
 
 //PyMotionの実装--------------------------------------------------
@@ -112,7 +146,7 @@ static void PyMotionDealloc(PyMotion* self){
 static PyObject* getPyBoneFrame_wrapper(PyMotion* self){
     PyObject* pyBoneFrames = PyList_New(0);
 
-    for (int i = 0; i <= self->motionData.maxFrame.maxFrame; ++i){
+    for (int i = 0; i < self->motionData.maxFrame.maxFrame; ++i){
         PyBoneFrame* pyBoneFrame = (PyBoneFrame*)PyObject_CallObject((PyObject*)&PyBoneFrameType, NULL);
         pyBoneFrame->name = PyBytes_FromStringAndSize(self->motionData.boneFrame[i].name, 15);
 
@@ -141,6 +175,7 @@ static PyObject* getPyBoneFrame_wrapper(PyMotion* self){
 
 static PyMethodDef PyMotionMethods[] = {
         {"getBoneFrame", (PyCFunction)getPyBoneFrame_wrapper, METH_NOARGS, "ボーンフレームをListとして取得できます。"},
+        {"setBoneFrame", (PyCFunction)setPyBoneFrame, METH_VARARGS, "ボーンをフレームを代入できる。"},
         {NULL}
 };
 
@@ -156,6 +191,66 @@ static PyTypeObject PyMotionType = {
         .tp_dealloc = (destructor) PyMotionDealloc,
 };
 
+static PyObject* setPyBoneFrame(PyMotion* self, PyObject* args){
+    PyMotion* pyMotion = (PyMotion*) self;
+    PyBoneFrame* pyBoneFrame;
+    struct BoneFrame boneFrame;
+
+    if(!PyArg_ParseTuple(args, "O", &pyBoneFrame)) return NULL;
+    char* tmp = PyBytes_AS_STRING(pyBoneFrame->name);
+    int length = (int) strlen(tmp);
+    for(int i = 0; i < sizeof(boneFrame.name); i++){
+        if(i < length) boneFrame.name[i] = tmp[i];
+        else boneFrame.name[i] = 0;
+    }
+    boneFrame.frame = pyBoneFrame->frame;
+    boneFrame.x = (float)pyBoneFrame->x;
+    boneFrame.y = (float)pyBoneFrame->y;
+    boneFrame.z = (float)pyBoneFrame->z;
+    boneFrame.qw = (float)pyBoneFrame->qw;
+    boneFrame.qx = (float)pyBoneFrame->qx;
+    boneFrame.qy = (float)pyBoneFrame->qy;
+    boneFrame.qz = (float)pyBoneFrame->qz;
+    PyObject* py_bezier = pyBoneFrame->bezier;
+    float norm = sqrtf(boneFrame.qw*boneFrame.qw+boneFrame.qx*boneFrame.qx+boneFrame.qy*boneFrame.qy+boneFrame.qz*boneFrame.qz);
+    if(!(norm > 0.99 && norm < 1.1)){
+        char err[128];
+        sprintf(err, "Bad quaternion norm. norm:%f", norm);
+        PyErr_SetString(PyExc_TypeError, err);
+        return NULL;
+    }
+    char *bezier = boneFrame.bezier;
+    for (int i = 0; i < 64; i++){
+        bezier[i] = (char)PyLong_AsLong(PyList_GetItem(py_bezier, i));
+    }
+
+    for(int i = 0; i < pyMotion->motionData.maxFrame.maxFrame; i++){
+        struct BoneFrame get_frame = pyMotion->motionData.boneFrame[i];
+        if(strncmp(get_frame.name, boneFrame.name, 15) == 0 && get_frame.frame == boneFrame.frame){
+            pyMotion->motionData.boneFrame[i] = boneFrame;
+        }
+    }
+    pyMotion->motionData.boneFrame[pyMotion->motionData.maxFrame.maxFrame] = boneFrame;
+    pyMotion->motionData.maxFrame.maxFrame++;
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+static PyObject* createMotion(PyObject* self, PyObject* args){
+    char *modelName;
+    if(!PyArg_ParseTuple(args, "s", &modelName)) return NULL;
+    PyMotion* pyMotion = (PyMotion *) PyObject_CallObject((PyObject *) &PyMotionType, NULL);
+    for(int i = 0; i < sizeof(pyMotion->motionData.header.header); i++){
+        pyMotion->motionData.header.header[i] = "Vocaloid Motion Data 0002\0\0\0\0\0"[i];
+    }
+    modelName = word_decode(modelName, (int)strlen(modelName), "SHIFT-JIS", "UTF-8");
+    memcpy(pyMotion->motionData.header.modelName, modelName, (int) strlen(modelName));
+    pyMotion->motionData.maxFrame.maxFrame = 0;
+    pyMotion->motionData.boneFrame = calloc(CREATE_MOTION_FRAME_SIZE, sizeof(struct BoneFrame));
+
+    return (PyObject*)pyMotion;
+}
+
 //VMDからファイルを読み込み関数のwrapper
 static PyObject* loadVMD_wrapper(PyObject* self, PyObject* args){
     char *motionPath;
@@ -166,6 +261,10 @@ static PyObject* loadVMD_wrapper(PyObject* self, PyObject* args){
 
     PyMotion* pyMotion = (PyMotion *) PyObject_CallObject((PyObject *) &PyMotionType, NULL);
     MotionData motionData = getMotion(motionPath, frameInterpolation);
+    if(motionData.maxFrame.maxFrame == -1) {
+        PyErr_SetString(PyExc_EOFError, "the file is not support.");
+        return NULL;
+    }
     pyMotion->motionData = motionData;
 
     return (PyObject*) pyMotion;
@@ -217,6 +316,28 @@ static PyObject* decodeMotion_wrapper(PyObject* self, PyObject* args){
 }
 
 //PyBoneFrameに関する実装----------------------------------------------------------------------
+static PyObject* PyBoneFrameNew(PyTypeObject* type, PyObject* args, PyObject *kwds){
+    PyBoneFrame* self = (PyBoneFrame*)type->tp_alloc(type, 0);
+    char* temp = word_decode("操作中心", sizeof("操作中心"), "SHIFT-JIS", "UTF-8");
+    memcpy(temp, self->name, strlen(temp));
+    free(temp);
+    self->frame = 0;
+    self->x = 0;
+    self->y = 0;
+    self->z = 0;
+    self->qw = 1;
+    self->qx = 0;
+    self->qy = 0;
+    self->qz = 0;
+    self->bezier = PyList_New(0);
+    const char bezier[64] = {20, 20, 0, 0, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 20, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 0};
+    for(int i = 0; i < 64; i++){
+        PyList_Append(self->bezier, PyLong_FromLong(bezier[i]));
+    }
+
+    return (PyObject*)self;
+}
+
 void PyBoneFrameDealloc(PyBoneFrame* self){
     Py_XDECREF(self->name);
     Py_XDECREF(self->bezier);
@@ -244,7 +365,7 @@ static PyTypeObject PyBoneFrameType = {
         .tp_basicsize = sizeof(PyBoneFrame),
         .tp_itemsize = 0,
         .tp_flags = Py_TPFLAGS_DEFAULT,
-        .tp_new = PyType_GenericNew,
+        .tp_new = PyBoneFrameNew,
         .tp_members = PyBoneFrameMembers,
         .tp_dealloc = (destructor) PyBoneFrameDealloc
 };
@@ -278,6 +399,7 @@ static void PyModelDealloc(PyModel* self){
 
 static PyMethodDef PyModelMethods[] = {
         {"getLink", (PyCFunction) getLink, METH_NOARGS, "ボーン間のリンクを取得する。"},
+        {"getBone", (PyCFunction) getBone, METH_NOARGS, "ボーン全体の情報を取得する。"},
         {NULL}
 };
 
@@ -309,6 +431,22 @@ static PyObject* getLink(PyObject* self){
     return bone_list;
 }
 
+static PyObject* getBone(PyObject* self){
+    PyModel *pyModel = (PyModel*) self;
+    PyObject* bone_list = PyList_New(0);
+    for(int i = 0; i < pyModel->model.bone_size; i++){
+        PyBone* pyBone = (PyBone *) PyObject_CallObject((PyObject *) &PyBoneType, NULL);
+        pyBone->name = PyBytes_FromStringAndSize(pyModel->model.bone[i].model_name_jp.byte, pyModel->model.bone[i].model_name_jp.byte_size);
+        pyBone->x = pyModel->model.bone[i].locations[0];
+        pyBone->y = pyModel->model.bone[i].locations[1];
+        pyBone->z = pyModel->model.bone[i].locations[2];
+        PyList_Append(bone_list, (PyObject*) pyBone);
+        Py_DECREF(pyBone);
+    }
+
+    return bone_list;
+}
+
 static PyTypeObject PyModelType = {
         .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
         .tp_name = "VMDConverter.PyModel",
@@ -321,6 +459,32 @@ static PyTypeObject PyModelType = {
         .tp_dealloc = (destructor) PyModelDealloc,
 };
 
+//PyBoneに関する実装--------------------------------------------------------------------
+static PyMemberDef PyBoneMembers[] = {
+        {"name", T_OBJECT, offsetof(PyBone, name), 0, "ボーンの名前"},
+        {"x", T_FLOAT, offsetof(PyBone, x), 0, "x軸"},
+        {"y", T_FLOAT, offsetof(PyBone, y), 0, "y軸"},
+        {"z", T_FLOAT, offsetof(PyBone, z), 0, "z軸"},
+        {NULL}
+};
+
+
+static void PyBoneDealloc(PyModel* self){
+    PyBone *pyBone = (PyBone*) self;
+    Py_DECREF(pyBone->name);
+    Py_TYPE(self)->tp_free((PyObject*) self);
+}
+static PyTypeObject PyBoneType = {
+        .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
+        .tp_name = "VMDConverter.PyBone",
+        .tp_doc = "Python bone object",
+        .tp_basicsize = sizeof(PyBone),
+        .tp_itemsize = 0,
+        .tp_flags = Py_TPFLAGS_DEFAULT,
+        .tp_new = PyType_GenericNew,
+        .tp_members = PyBoneMembers,
+        .tp_dealloc = (destructor)PyBoneDealloc
+};
 //PyEncodeMotionに関する実装------------------------------------------------------------
 static PyObject* PyEncodeMotionNew(PyObject *self, PyObject *args){
     PyEncodeMotion* pyEncodeMotion = (PyEncodeMotion*) PyObject_CallObject((PyObject*)&PyEncodeMotionType, NULL);
@@ -648,8 +812,9 @@ static PyTypeObject PyEncodeBoneFrameType = {
 
 //directパッケージの関数一覧
 static PyMethodDef PyDirectMethods[] = {
+        {"createMotion", createMotion, METH_VARARGS, "からのモーションを作成する。"},
         {"loadVMD", loadVMD_wrapper, METH_VARARGS},
-        {"writeVMD", writeVMD_wrapper, METH_VARARGS, "VMDにメーションを書きこきます。args:(str:書き込み先パス, PyMotion:書き込むモーション)"},
+        {"writeVMD", writeVMD_wrapper, METH_VARARGS, "VMDにモーションを書きこきます。args:(str:書き込み先パス, PyMotion:書き込むモーション)"},
 
         {"encodeMotion", encodeMotion_wrapper, METH_VARARGS, "読み込んだVMDをAIが解析できる形にエンコードします。args:(PyMotion:エンコードするモーション, PyModel:基準となるモデル)"},
         {"decodeMotion", decodeMotion_wrapper, METH_VARARGS, "エンコードしたモーションデータをVMD形式にデコードします。args:(PyEncodeMotion:デコードするモーション, PyModel:基準となるモデル, List<str>:デコードする際に必要なボーン))"},
@@ -673,12 +838,13 @@ PyMODINIT_FUNC PyInit_VMDConverter(){
 
     PyObject *m = PyModule_Create(&PyDirectModule);
 
-    if(PyType_Ready(&PyMotionType) < 0 || PyType_Ready(&PyModelType) < 0 || PyType_Ready(&PyEncodeMotionType) < 0 ||
+    if(PyType_Ready(&PyMotionType) < 0 || PyType_Ready(&PyModelType) < 0 || PyType_Ready(&PyBoneType) < 0 || PyType_Ready(&PyEncodeMotionType) < 0 ||
             PyType_Ready(&PyBoneFrameType) < 0 || PyType_Ready(&PyEncodeBoneFrameType) < 0){
         return NULL;
     }
 
     if(PyModule_AddObjectRef(m, "PyMotion", (PyObject*)&PyMotionType) < 0 || PyModule_AddObjectRef(m, "PyModel", (PyObject*)&PyModelType) ||
+            PyModule_AddObjectRef(m, "PyBone", (PyObject*)&PyBoneType) < 0 || PyModule_AddObjectRef(m, "PyBoneFrame", (PyObject*)&PyBoneFrameType) < 0 ||
             PyModule_AddObjectRef(m, "PyEncodeMotion", (PyObject*)&PyEncodeMotionType) < 0 || PyModule_AddObjectRef(m, "PyEncodeBoneFrame", (PyObject*)&PyEncodeBoneFrameType) < 0 ){
         Py_DECREF(m);
         return NULL;

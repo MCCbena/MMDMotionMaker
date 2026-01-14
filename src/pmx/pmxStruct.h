@@ -143,14 +143,14 @@ typedef struct { //外部親変形
 }Deformation;
 
 typedef struct { //IKリンク
-    char *linkBone_index_size; //リンクボーンのボーンIndex
+    int linkBone_index_size; //リンクボーンのボーンIndex
     char limit_angele; //角度制限 0:OFF 1:ON
 
     float lower_limit[3]; //下限 (x,y,z) -> ラジアン角
     float upper_limit[3]; //上限 (x,y,z) -> ラジアン角
 } IKLink;
 typedef struct {
-    char *IK_targetBone_index_size; //IKターゲットボーンのボーンIndex
+    int IK_targetBone_index_size; //IKターゲットボーンのボーンIndex
     int IK_loop_count; //IKループ回数
     float IK_limit_angle; //IKループ計算時の1回あたりの制限角度 -> ラジアン角
 

@@ -1,6 +1,11 @@
 from typing import overload, Type
 
-
+def createMotion(modelName:str) -> PyMotion:
+    """
+    からのモーションデータを作成します。
+    :param modelName: モデル名を指定します。
+    :return:
+    """
 def loadVMD(motionPath: str, enableFrameInterpolation=False) -> PyMotion:
     """VMDファイルからモーションを読み込みます。
     :param motionPath: モーションのパス
@@ -56,6 +61,14 @@ class PyMotion:
     def getBoneFrame(self) -> list[PyBoneFrame]:
         """ボーンフレームを取得します。"""
 
+    def setBoneFrame(self, bone_frame:PyBoneFrame):
+        """
+        ボーンフレームを設定します。同じボーン名、同じフレームのものが存在する場合は上書きされます。
+        設定するボーンフレームが確保されているメモリを超えた場合の動作は保証されません。
+        :param bone_frame: 設定するボーンフレーム
+        :return:
+        """
+
 class PyBoneFrame:
     """ボーンフレームを格納するクラスです。"""
     def __init__(self):
@@ -101,6 +114,24 @@ class PyModel:
         となります。全ての親の親ボーンはないため0、腰は全ての親の子であるため、親ボーンのインデックス番号が含まれます。
         :return:
         """
+
+    def getBone(self)-> list[PyBone]:
+        """
+        モデルのボーンに関する情報を取得できます。
+        モデルのボーンインデックスと返されたリストのインデックスが対応しています。
+        :return:
+        """
+
+class PyBone:
+    def __init__(self):
+        self.name = type[bytes]
+        """モデルの名前がバイト配列で格納されます。"""
+        self.x = float
+        """モデルの初期座標位置のxを表します。"""
+        self.y = float
+        """モデルの初期座標位置のyを表します。"""
+        self.z = float
+        """モデルの初期座標位置のzを表します。"""
 
 class PyEncodeMotion:
     """

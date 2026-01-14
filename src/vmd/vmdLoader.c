@@ -12,6 +12,11 @@
 
 const char bezier[64] = {20, 20, 0, 0, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 20, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 20, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 20, 20, 20, 20, 20, 107, 107, 107, 107, 107, 107, 107, 107, 0, 0, 0};
 
+long double clipByValu(long double value, long double max, long double min){
+    if(max < value) return max;
+    if(min > value) return min;
+    return value;
+}
 
 long double getPos(const long double pos1, const long double pos2, long double time){
     return (3* powl(1.0-time, 2)*time*pos1+3.0f* (1-time)* powl(time, 2)*pos2 + powl(time, 3));
@@ -30,8 +35,9 @@ MotionData getMotion(const char* path, bool frame_completion){
     }
     fread(&motionData.maxFrame, 4, 1, fpw);
 
-    motionData.boneFrame = calloc(111, motionData.maxFrame.maxFrame);
-    fread(&*motionData.boneFrame, 111, motionData.maxFrame.maxFrame, fpw);
+    motionData.boneFrame = calloc(motionData.maxFrame.maxFrame, sizeof(struct BoneFrame));
+    fread(&*motionData.boneFrame, sizeof(struct BoneFrame), motionData.maxFrame.maxFrame, fpw);
+    fclose(fpw);
 
 
     //データ補完が有効な場合
@@ -56,10 +62,10 @@ MotionData getMotion(const char* path, bool frame_completion){
 
 
         //フレームを補完
-        struct BoneFrame **pBoneFrame = (struct BoneFrame**) calloc(sizeof(struct BoneFrame*), index.assigned);
+        struct BoneFrame **pBoneFrame = (struct BoneFrame**) calloc(index.assigned, sizeof(*pBoneFrame));
 
         for(int i = 0; i < index.assigned; i++){
-            pBoneFrame[i] = calloc(sizeof(struct BoneFrame), max_frame);
+            pBoneFrame[i] = calloc(max_frame, sizeof(struct BoneFrame));
         }
 
         for(int i = 0; i < motionData.maxFrame.maxFrame; i++){
@@ -150,7 +156,7 @@ MotionData getMotion(const char* path, bool frame_completion){
             }
         }
         //ボーンの合成
-        struct BoneFrame *synthesis_boneFrame = calloc(111, index.assigned*max_frame);
+        struct BoneFrame *synthesis_boneFrame = calloc( index.assigned*max_frame, sizeof(struct BoneFrame));
         int n = 0;
 
         for(int i = 0; i < index.assigned; i++){
@@ -159,10 +165,10 @@ MotionData getMotion(const char* path, bool frame_completion){
                 synthesis_boneFrame[n] = pBoneFrame[i][j];
                 n++;
             }
-            free(pBoneFrame[i]);
-            pBoneFrame[i] = NULL;
+            //free(pBoneFrame[i]);
+            //pBoneFrame[i] = NULL;
         }
-        free(pBoneFrame);
+        //free(pBoneFrame);
         motionData.maxFrame.maxFrame = n;
         //memcpy(motionData.boneFrame, synthesis_boneFrame, n*111);
         free(motionData.boneFrame);
@@ -177,15 +183,54 @@ MotionData getMotion(const char* path, bool frame_completion){
         boneFrame = NULL;
          */
         destroy_index(&index);
+        free(pBoneFrame);
+        pBoneFrame = NULL;
     }
 
     return motionData;
 }
 
 
+struct Vector3 CalPositionFromQuat(float rx, float ry, float rz, struct Quaternion quaternion){
+    long double *r1, *r2, *r3;
+    struct Matrix matrix = QuaternionToMatrix(quaternion);
+    struct Vector3 ret;
+
+    r1 = matrix.value[0];
+    r2 = matrix.value[1];
+    r3 = matrix.value[2];
+
+    ret.x = r1[0] * rx + r1[1] * ry + r1[2] * rz;
+    ret.y = r2[0] * rx + r2[1] * ry + r2[2] * rz;
+    ret.z = r3[0] * rx + r3[1] * ry + r3[2] * rz;
+
+    return ret;
+}
+int IKSortCompare(const void *a, const void *b){
+    return (*(IKLink*)b).linkBone_index_size - (*(IKLink*)a).linkBone_index_size;
+}
+/*
+ * frame:フレーム番号
+ * current_frames:処理を行うフレーム（1フレーム）の中に含まれているモーションデータ
+ * encodeBoneFrame:処理内容を渡す変数
+ * model:基準モデル
+ * parentBoneDataPtrArray:ボーンの親子関係。parentBoneDataPtrArray[子ボーンのインデックス]で親ボーンのインデックスが取得できる。
+ */
 void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct Index *model_index, struct EncodeBoneFrame *encodeBoneFrame, struct Model model, const int* parentBoneDataPtrArray){
+    struct BoneFrame* current_frame_temp = malloc(sizeof(struct BoneFrame)*model_index->assigned);
     for(int bone_i = 0; bone_i < model_index->assigned; bone_i++){
-        struct BoneFrame *current_bone_frame = &current_frames[bone_i];
+        struct BoneFrame *current_bone_frame = &current_frame_temp[bone_i];
+        current_bone_frame->x = current_frames[bone_i].x;
+        current_bone_frame->y = current_frames[bone_i].y;
+        current_bone_frame->z = current_frames[bone_i].z;
+        memcpy(current_bone_frame->name, current_frames[bone_i].name, 15);
+        memcpy(current_bone_frame->bezier, current_frames[bone_i].bezier, 64);
+        current_bone_frame->frame = current_frames[bone_i].frame;
+        current_bone_frame->qw = current_frames[bone_i].qw;
+        current_bone_frame->qx = current_frames[bone_i].qx;
+        current_bone_frame->qy = current_frames[bone_i].qy;
+        current_bone_frame->qz = current_frames[bone_i].qz;
+
         struct Bone current_edited_bone = model.bone[bone_i];
         if(current_bone_frame->name[0] == 0){
             //ボーン名前を代入
@@ -205,10 +250,9 @@ void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct
 
         //親ボーンらが移動した合計を計算
         if(parentBoneDataPtrArray[bone_i] != -1){
-
             int parent_bone_index =  parentBoneDataPtrArray[bone_i];
             struct Bone parent_bone = model.bone[parent_bone_index];
-            struct BoneFrame parent_boneFrame = current_frames[parent_bone_index];
+            struct BoneFrame parent_boneFrame = current_frame_temp[parent_bone_index];
             struct Quaternion quaternion_p;
             quaternion_p.x = parent_boneFrame.qx;
             quaternion_p.y = parent_boneFrame.qy;
@@ -225,22 +269,11 @@ void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct
             float ry = current_edited_bone.locations[1] - parent_bone.locations[1];
             float rz = current_edited_bone.locations[2] - parent_bone.locations[2];
 
-            long double combination_rx=0, combination_ry=0, combination_rz=0;
-            long double *r1, *r2, *r3;
-            struct Matrix matrix = QuaternionToMatrix(quaternion_p);
-
-            r1 = matrix.value[0];
-            r2 = matrix.value[1];
-            r3 = matrix.value[2];
-
-            combination_rx = r1[0] * rx + r1[1] * ry + r1[2] * rz;
-            combination_ry = r2[0] * rx + r2[1] * ry + r2[2] * rz;
-            combination_rz = r3[0] * rx + r3[1] * ry + r3[2] * rz;
-
+            struct Vector3 combinations = CalPositionFromQuat(rx, ry, rz, quaternion_p);
             //絶対座標の計算
-            long double ax = combination_rx + current_bone_frame->x + parent_boneFrame.x;
-            long double ay = combination_ry + current_bone_frame->y + parent_boneFrame.y;
-            long double az = combination_rz + current_bone_frame->z + parent_boneFrame.z;
+            long double ax = combinations.x + current_bone_frame->x + parent_boneFrame.x;
+            long double ay = combinations.y + current_bone_frame->y + parent_boneFrame.y;
+            long double az = combinations.z + current_bone_frame->z + parent_boneFrame.z;
 
 
             current_bone_frame->x = (float)ax;
@@ -279,17 +312,15 @@ void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct
                 free(tempstr);
             }
              */
-
-
         }else{
             current_bone_frame->x += current_edited_bone.locations[0];
             current_bone_frame->y += current_edited_bone.locations[1];
             current_bone_frame->z += current_edited_bone.locations[2];
 
             //エンコードボーンフレーム構造体に代入
-            encodeBoneFrame[bone_i].x = current_bone_frame->x;
-            encodeBoneFrame[bone_i].y = current_bone_frame->y;
-            encodeBoneFrame[bone_i].z = current_bone_frame->z;
+            encodeBoneFrame[bone_i].x = current_edited_bone.locations[0];
+            encodeBoneFrame[bone_i].y = current_edited_bone.locations[1];
+            encodeBoneFrame[bone_i].z = current_edited_bone.locations[2];
 
             encodeBoneFrame[bone_i].qx = current_bone_frame->qx;
             encodeBoneFrame[bone_i].qy = current_bone_frame->qy;
@@ -302,6 +333,116 @@ void jointCalculationEncoder(int frame, struct BoneFrame* current_frames, struct
              */
         }
     }
+
+    //IKに関する計算
+    struct Quaternion quaternion_buffer[model.bone_size];
+    for (int i = 0; i < model.bone_size; ++i) {
+        quaternion_buffer[i].w = 1;
+        quaternion_buffer[i].x = 0;
+        quaternion_buffer[i].y = 0;
+        quaternion_buffer[i].z = 0;
+    }
+    for (int bone_i = 0; bone_i < model_index->assigned; ++bone_i) {
+        struct Bone current_edited_bone = model.bone[bone_i];
+
+        if(current_edited_bone.bone_flags&0x0020){ //IKが有効だった場合
+            //IKのソート
+            IKLink *sorted_IKlink = malloc(sizeof(IKLink)*current_edited_bone.ik.IK_link_count);
+            for (int i = 0; i < current_edited_bone.ik.IK_link_count; ++i) {
+                sorted_IKlink[i] = current_edited_bone.ik.ikLink[i];
+            }
+            qsort(sorted_IKlink, current_edited_bone.ik.IK_link_count, sizeof(IKLink), IKSortCompare); //降順
+
+            int effector_index = current_edited_bone.ik.IK_targetBone_index_size;
+            struct Vector3 target_pos = {encodeBoneFrame[bone_i].x, encodeBoneFrame[bone_i].y, encodeBoneFrame[bone_i].z};
+            int apply_ik_indices[current_edited_bone.ik.IK_link_count+1];
+            apply_ik_indices[current_edited_bone.ik.IK_link_count] = effector_index;
+            for (int i = 0; i < current_edited_bone.ik.IK_link_count; ++i) {
+                apply_ik_indices[i] = sorted_IKlink[current_edited_bone.ik.IK_link_count-i-1].linkBone_index_size;
+            }
+            //IKの調整ループ
+            for (int ik_loop = 0; ik_loop < current_edited_bone.ik.IK_loop_count; ++ik_loop) {
+                for (int i = 0; i < current_edited_bone.ik.IK_link_count; ++i) {
+                    int index = sorted_IKlink[i].linkBone_index_size;
+                    struct Vector3 joint_pos = {encodeBoneFrame[index].x, encodeBoneFrame[index].y, encodeBoneFrame[index].z};
+
+                    struct Vector3 effector_pos = {encodeBoneFrame[effector_index].x, encodeBoneFrame[effector_index].y, encodeBoneFrame[effector_index].z};
+                    struct Vector3 to_effector = NormalizationV(minusV(effector_pos, joint_pos));
+                    struct Vector3 to_target = NormalizationV(minusV(target_pos, joint_pos));
+
+                    struct Vector3 axis = NormalizationV(crossV(to_effector, to_target));
+                    //if((axis.x*axis.x + axis.y*axis.y + axis.z*axis.z) >= 1) continue;
+
+                    long double angle = dotV(to_effector, to_target);
+                    if(angle > 1) angle=1;
+                    if(angle < -1) angle=-1;
+                    angle = clipByValu(acosl(angle), current_edited_bone.ik.IK_limit_angle, 0);
+                    if(fabsl(angle) < 1e-6) continue;
+
+                    struct Quaternion IK_quat = QuaternionFromAxisAngle(axis, angle);
+                    struct Quaternion IK_bone_buffer_quat = quaternion_buffer[index];
+                    struct Quaternion IK_add = qmul(IK_bone_buffer_quat, IK_quat);
+                    struct Quaternion q_c = {encodeBoneFrame[index].qw, encodeBoneFrame[index].qx, encodeBoneFrame[index].qy, encodeBoneFrame[index].qz};
+                    struct Quaternion limit_q_c;
+                    if(sorted_IKlink[i].limit_angele) {
+                        struct Vector3 vec1 = QuaternionToEuler(IK_add);
+                        vec1.x = clipByValu(vec1.x, sorted_IKlink[i].upper_limit[0], sorted_IKlink[i].lower_limit[0]);
+                        vec1.y = clipByValu(vec1.y, sorted_IKlink[i].upper_limit[1], sorted_IKlink[i].lower_limit[1]);
+                        vec1.z = clipByValu(vec1.z, sorted_IKlink[i].upper_limit[2], sorted_IKlink[i].lower_limit[2]);
+                        IK_add = EulerToQuaternion(vec1);
+
+                        limit_q_c = (qmul(inverse(IK_bone_buffer_quat), IK_add));
+                    }else{
+                        struct Vector3 vec1 = QuaternionToEuler(IK_add);
+                        //vec1.y = clipByValu(vec1.y, M_PI, 0);
+                        IK_add = EulerToQuaternion(vec1);
+
+                        limit_q_c = (qmul(inverse(IK_bone_buffer_quat), IK_add));
+                    }
+
+                    quaternion_buffer[index] = IK_add;
+                    struct Quaternion q_c_add = qmul(q_c, limit_q_c);
+                    encodeBoneFrame[index].qw = q_c_add.w;
+                    encodeBoneFrame[index].qx = q_c_add.x;
+                    encodeBoneFrame[index].qy = q_c_add.y;
+                    encodeBoneFrame[index].qz = q_c_add.z;
+                    //回転の適応
+                    for (int j = current_edited_bone.ik.IK_link_count-i; j < current_edited_bone.ik.IK_link_count+1; ++j) {
+                        int ik_bone_index = apply_ik_indices[j];
+                        int IK_parent_bone_index = parentBoneDataPtrArray[ik_bone_index];
+                        struct Bone parent_bone = model.bone[IK_parent_bone_index];
+
+                        //子ボーンを正とした相対座標(Relative Coordinates)を計算
+                        float rx = model.bone[ik_bone_index].locations[0] - parent_bone.locations[0];
+                        float ry = model.bone[ik_bone_index].locations[1] - parent_bone.locations[1];
+                        float rz = model.bone[ik_bone_index].locations[2] - parent_bone.locations[2];
+
+                        struct Quaternion q = {encodeBoneFrame[IK_parent_bone_index].qw, encodeBoneFrame[IK_parent_bone_index].qx, encodeBoneFrame[IK_parent_bone_index].qy, encodeBoneFrame[IK_parent_bone_index].qz};
+                        struct Vector3 combinations = CalPositionFromQuat(rx, ry, rz, q);
+                        //絶対座標の計算
+                        long double ax = combinations.x + encodeBoneFrame[IK_parent_bone_index].x;
+                        long double ay = combinations.y + encodeBoneFrame[IK_parent_bone_index].y;
+                        long double az = combinations.z + encodeBoneFrame[IK_parent_bone_index].z;
+
+                        //エンコードボーンフレーム構造体に代入
+                        encodeBoneFrame[ik_bone_index].x = ax;
+                        encodeBoneFrame[ik_bone_index].y = ay;
+                        encodeBoneFrame[ik_bone_index].z = az;
+
+
+                        //if(j == current_edited_bone.ik.IK_link_count) continue;
+                        struct Quaternion quat_encode_frame_add = qmul(quaternion_buffer[ik_bone_index], q_c_add);
+                        encodeBoneFrame[ik_bone_index].qw = quat_encode_frame_add.w;
+                        encodeBoneFrame[ik_bone_index].qx = quat_encode_frame_add.x;
+                        encodeBoneFrame[ik_bone_index].qy = quat_encode_frame_add.y;
+                        encodeBoneFrame[ik_bone_index].qz = quat_encode_frame_add.z;
+                    }
+                }
+            }
+            free(sorted_IKlink);
+        }
+    }
+    free(current_frame_temp);
 }
 
 /*
@@ -326,7 +467,7 @@ void makeParentChildLink(int* dist, struct Model model){
  * また、必ずgetMotionのフレームを補完を行ってから実行すること。
 */
 EncodeMotionData motionEncoder(struct Model model, MotionData *motionData, int stride){
-    printf("インデックス作成\n");
+    //printf("インデックス作成\n");
     char* encode_codec = model.header.encode==1 ? "UTF-8" : "UTF-16";
 
     //出力用の構造体
@@ -386,7 +527,7 @@ EncodeMotionData motionEncoder(struct Model model, MotionData *motionData, int s
             parentBoneDataArray[child_bone_index] = bone_i;
         }
     }
-    printf("計算開始\n");
+    //printf("計算開始\n");
     max_frame /= stride;
     encodeMotionData.encodeBoneFrame = calloc(sizeof(struct EncodeBoneFrame), max_frame+1);
     encodeMotionData.encodeBoneFrame_size = max_frame+1;
@@ -395,7 +536,7 @@ EncodeMotionData motionEncoder(struct Model model, MotionData *motionData, int s
         jointCalculationEncoder(i, bone_frames[i*stride], &model_name_index, encodeMotionData.encodeBoneFrame[i], model,
                                 parentBoneDataArray);
     }
-    printf("完了\n");
+    //printf("完了\n");
     //free
     for(int i = 0; i < 16384; i++) {
         free(bone_frames[i]);
@@ -709,21 +850,21 @@ void writeMotion(const char* output_file_path, MotionData motionData){
     FILE *fpw = fopen(output_file_path, "w");
     fwrite(&motionData.header, 50, 1, fpw);//ヘッダーを書き込み
     fwrite(&motionData.maxFrame.maxFrame, 1, sizeof(int), fpw);//最大フレームを書き込み
-    fwrite(motionData.boneFrame,111,motionData.maxFrame.maxFrame , fpw);//ボーンフレーム
+    fwrite(motionData.boneFrame,111,motionData.maxFrame.maxFrame, fpw);//ボーンフレーム
     fclose(fpw);
 }
 
 /*
 #include "../pmx/modelLoader.c"
 int main(){
-    for (int k = 0; k < 10; ++k) {
+    for (int k = 0; k < 1; ++k) {
 
-        MotionData motionData = getMotion("/home/shuta/デスクトップ/motion.vmd", true);
+        MotionData motionData = getMotion("/mnt/E86884F46884C334/D/src/motions/sm19277556/夏に去りし君を想フ_モーション.vmd", true);
         printf("%d\n", motionData.maxFrame.maxFrame);
         writeMotion("/home/shuta/デスクトップ/motion1.vmd", motionData);
         //printf("%s\n", word_decode(motionData.boneFrame[10000].name, 15, "UTF-8", "SHIFT-JIS"));
 
-        struct Index bone_index = makeIndex(400, 15);
+        struct Index bone_index = makeIndex(512, 15);
         for (int i = 0; i < motionData.maxFrame.maxFrame; i++) {
             if (getnIndex(bone_index, motionData.boneFrame[i].name, 15) == -1)
                 addIndex(&bone_index, motionData.boneFrame[i].name, 15);
@@ -732,8 +873,8 @@ int main(){
         struct Model model;
         getModel("/home/shuta/MikuMikuDance_v932x64/models/YYB Hatsune Miku_10th/YYB Hatsune Miku_10th_v1.02.pmx",
                  &model);
-        EncodeMotionData encodeMotionData = motionEncoder(model, &motionData);
-        MotionData decodeMotionData = motionDecoder(encodeMotionData, model, bone_index);
+        EncodeMotionData encodeMotionData = motionEncoder(model, &motionData, 4);
+        MotionData decodeMotionData = motionDecoder(encodeMotionData, model, bone_index, 4);
         memcpy(decodeMotionData.header.header, motionData.header.header, 30);
         memcpy(decodeMotionData.header.modelName, motionData.header.modelName, 20);
         writeMotion("/home/shuta/デスクトップ/motion2.vmd", decodeMotionData);
